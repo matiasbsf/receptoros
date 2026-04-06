@@ -1,61 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { supabase } from '../supabaseClient';
 
 const ESTADOS = [
   'Pendiente', 'En Proceso', 'Firmado', 'Subido PJUD',
   'Error PJUD', 'Enviado a Cobro', 'Pendiente de Pago', 'Pagado'
-];
-
-const CAUSAS_MOCK = [
-  {
-    id: 1, rol: 'C-1234-2025', nInterno: 'CLI-0089',
-    tribunal: 'Juzgado de Letras y Garantía de Quintero',
-    demandante: 'Banco Santander', demandado: 'Juan Pérez López',
-    rut: '12.345.678-9', domicilio: 'Av. Providencia 1234, Dpto 5',
-    comuna: 'Providencia', tipo: 'Notificación Personal',
-    estado: 'Pendiente', cliente: 'ASINVERCO', cartera: 'Banco Santander',
-    monto: 85000, distancia: 0, pjud: true, cbr: false,
-    notificados: [
-      { nombre: 'Juan Pérez López', rut: '12.345.678-9', domicilio: 'Av. Providencia 1234, Dpto 5', comuna: 'Providencia' }
-    ]
-  },
-  {
-    id: 2, rol: 'L-0912-2025', nInterno: null,
-    tribunal: 'Juzgado de Letras y Garantía de Quintero',
-    demandante: 'Banco de Chile', demandado: 'Ana Torres Vega',
-    rut: '17.234.567-8', domicilio: 'Irarrázaval 2345',
-    comuna: 'Puchuncaví', tipo: 'Embargo',
-    estado: 'Firmado', cliente: 'ORPRO', cartera: 'Banco de Chile',
-    monto: 180000, distancia: 25000, pjud: true, cbr: true,
-    caratulaCBR: 'CBR-2025-0456',
-    notificados: [
-      { nombre: 'Ana Torres Vega', rut: '17.234.567-8', domicilio: 'Irarrázaval 2345', comuna: 'Puchuncaví' }
-    ]
-  },
-  {
-    id: 3, rol: 'C-5678-2025', nInterno: 'CLI-0091',
-    tribunal: 'Juzgado de Letras y Garantía de Quintero',
-    demandante: 'Clínica Las Condes', demandado: 'Pedro Soto Muñoz',
-    rut: '15.678.901-2', domicilio: 'Los Leones 567',
-    comuna: 'Las Condes', tipo: 'Requerimiento de Pago',
-    estado: 'Pagado', cliente: 'Independiente', cartera: '—',
-    monto: 95000, distancia: 0, pjud: true, cbr: false,
-    notificados: [
-      { nombre: 'Pedro Soto Muñoz', rut: '15.678.901-2', domicilio: 'Los Leones 567', comuna: 'Las Condes' },
-      { nombre: 'María Soto Rojas', rut: '16.789.012-3', domicilio: 'Av. Grecia 890', comuna: 'Las Condes' }
-    ]
-  },
-  {
-    id: 4, rol: 'C-3456-2025', nInterno: null,
-    tribunal: 'Juzgado de Letras y Garantía de Quintero',
-    demandante: 'Banco Santander', demandado: 'Luis Vargas Rojas',
-    rut: '19.012.345-6', domicilio: 'Teatinos 120 piso 3',
-    comuna: 'Santiago Centro', tipo: 'Notificación Personal',
-    estado: 'Pendiente de Pago', cliente: 'ASINVERCO', cartera: 'Banco Santander',
-    monto: 85000, distancia: 0, pjud: false, cbr: false,
-    notificados: [
-      { nombre: 'Luis Vargas Rojas', rut: '19.012.345-6', domicilio: 'Teatinos 120 piso 3', comuna: 'Santiago Centro' }
-    ]
-  },
 ];
 
 function Badge({ estado }) {
@@ -85,6 +33,7 @@ function NuevaCausa({ onClose, onGuardar }) {
   const [esCBR, setEsCBR] = useState(false);
   const [pjudBuscado, setPjudBuscado] = useState(false);
   const [buscandoPJUD, setBuscandoPJUD] = useState(false);
+  const [guardando, setGuardando] = useState(false);
   const [form, setForm] = useState({
     rol: '', nInterno: '', tribunal: '', tipo: '',
     demandante: '', cliente: '', cartera: '', caratulaCBR: ''
@@ -118,6 +67,41 @@ function NuevaCausa({ onClose, onGuardar }) {
   const copyPrev = (i) => setNotificados(p => p.map((n, j) => j === i ? { ...n, domicilio: p[i-1].domicilio, comuna: p[i-1].comuna } : n));
   const removeNotificado = (i) => setNotificados(p => p.filter((_, j) => j !== i));
 
+  const guardar = async () => {
+    if (!form.rol || !form.tribunal) return;
+    setGuardando(true);
+    try {
+      const { data, error } = await supabase
+        .from('causas')
+        .insert([{
+          rol: form.rol,
+          n_interno: form.nInterno || null,
+          tribunal: form.tribunal,
+          tipo: form.tipo,
+          demandante: form.demandante,
+          demandado: notificados[0]?.nombre || '',
+          rut: notificados[0]?.rut || '',
+          domicilio: notificados[0]?.domicilio || '',
+          comuna: notificados[0]?.comuna || '',
+          estado: 'Pendiente',
+          monto: 0,
+          distancia: 0,
+          pjud: pjudBuscado,
+          cbr: esCBR,
+          caratula_cbr: esCBR ? form.caratulaCBR : null,
+        }])
+        .select();
+
+      if (error) throw error;
+      onGuardar && onGuardar();
+      onClose();
+    } catch (error) {
+      console.error('Error guardando causa:', error);
+      alert('Error al guardar. Intenta nuevamente.');
+    }
+    setGuardando(false);
+  };
+
   return (
     <div className="card card-p" style={{ marginBottom: 16 }}>
       <div className="row" style={{ marginBottom: 16, justifyContent: 'space-between' }}>
@@ -137,7 +121,7 @@ function NuevaCausa({ onClose, onGuardar }) {
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 8 }}>
           <div className="col" style={{ gap: 4 }}>
-            <div className="sl" style={{ marginBottom: 4 }}>ROL</div>
+            <div className="sl" style={{ marginBottom: 4 }}>ROL *</div>
             <input placeholder="C-1234-2025" value={form.rol} onChange={setF('rol')} />
           </div>
           <div className="col" style={{ gap: 4 }}>
@@ -259,8 +243,13 @@ function NuevaCausa({ onClose, onGuardar }) {
 
       {/* Acciones */}
       <div className="row">
-        <button className="btn btn-gold" style={{ padding: '10px 24px', fontSize: 13 }}>
-          Crear Causa
+        <button
+          className="btn btn-gold"
+          style={{ padding: '10px 24px', fontSize: 13 }}
+          onClick={guardar}
+          disabled={guardando}
+        >
+          {guardando ? <><span className="spin">⚙</span> Guardando...</> : 'Crear Causa'}
         </button>
         <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
       </div>
@@ -269,19 +258,40 @@ function NuevaCausa({ onClose, onGuardar }) {
 }
 
 export default function Causas() {
-  const [causas, setCausas] = useState(CAUSAS_MOCK);
+  const [causas, setCausas] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [filtroEstado, setFiltroEstado] = useState('Todos');
   const [filtroCBR, setFiltroCBR] = useState(false);
   const [search, setSearch] = useState('');
   const [showNueva, setShowNueva] = useState(false);
   const [showAlert, setShowAlert] = useState(true);
 
+  const cargarCausas = async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from('causas')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (!error) setCausas(data || []);
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    cargarCausas();
+  }, []);
+
+  const eliminarCausa = async (id) => {
+    if (!window.confirm('¿Eliminar esta causa?')) return;
+    await supabase.from('causas').delete().eq('id', id);
+    cargarCausas();
+  };
+
   const filtradas = causas.filter(c => {
     if (filtroEstado !== 'Todos' && c.estado !== filtroEstado) return false;
     if (filtroCBR && !c.cbr) return false;
-    if (search && !c.rol.toLowerCase().includes(search.toLowerCase()) &&
-        !c.demandado.toLowerCase().includes(search.toLowerCase()) &&
-        !c.demandante.toLowerCase().includes(search.toLowerCase())) return false;
+    if (search && !c.rol?.toLowerCase().includes(search.toLowerCase()) &&
+        !c.demandado?.toLowerCase().includes(search.toLowerCase()) &&
+        !c.demandante?.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
 
@@ -323,7 +333,10 @@ export default function Causas() {
 
       {/* Formulario nueva causa */}
       {showNueva && (
-        <NuevaCausa onClose={() => setShowNueva(false)} />
+        <NuevaCausa
+          onClose={() => setShowNueva(false)}
+          onGuardar={cargarCausas}
+        />
       )}
 
       {/* Filtros */}
@@ -358,8 +371,16 @@ export default function Causas() {
         </div>
       </div>
 
+      {/* Loading */}
+      {loading && (
+        <div style={{ textAlign: 'center', padding: 48, color: 'var(--txt-mid)' }}>
+          <span className="spin" style={{ fontSize: 32 }}>⚙</span>
+          <div style={{ marginTop: 8 }}>Cargando causas...</div>
+        </div>
+      )}
+
       {/* Lista de causas */}
-      {filtradas.map(c => (
+      {!loading && filtradas.map(c => (
         <div key={c.id} className="card" style={{ padding: '13px 16px', marginBottom: 8 }}>
           <div className="row" style={{ flexWrap: 'wrap', gap: 10 }}>
             <div style={{ flex: 1, minWidth: 200 }}>
@@ -367,9 +388,9 @@ export default function Causas() {
                 <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--gold)', fontFamily: "'DM Mono', monospace" }}>
                   {c.rol}
                 </span>
-                {c.nInterno && (
+                {c.n_interno && (
                   <span className="tag" style={{ color: 'var(--violet)', background: 'var(--violet-bg)', border: '1px solid rgba(167,139,250,.3)' }}>
-                    N°Int: {c.nInterno}
+                    N°Int: {c.n_interno}
                   </span>
                 )}
                 <Badge estado={c.estado} />
@@ -385,27 +406,21 @@ export default function Causas() {
                 )}
                 {c.cbr && (
                   <span className="tag" style={{ color: 'var(--violet)', background: 'var(--violet-bg)', border: '1px solid rgba(167,139,250,.3)' }}>
-                    CBR · {c.caratulaCBR}
+                    CBR {c.caratula_cbr ? `· ${c.caratula_cbr}` : ''}
                   </span>
                 )}
               </div>
               <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--txt)', marginBottom: 2 }}>
                 {c.demandante} <span style={{ color: 'var(--txt-lo)', fontWeight: 300 }}>vs</span> {c.demandado}
               </div>
-              {c.notificados.length > 1 && (
-                <div style={{ fontSize: 10, color: 'var(--amber)', marginBottom: 2 }}>
-                  +{c.notificados.length - 1} notificado(s) adicional(es)
-                </div>
-              )}
               <div style={{ fontSize: 10, color: 'var(--txt-mid)' }}>
-                {c.tribunal} · <span style={{ color: 'var(--violet)' }}>{c.cliente}</span>
-                {c.cartera !== '—' && <span style={{ color: 'var(--txt-lo)' }}> → {c.cartera}</span>}
+                {c.tribunal}
               </div>
             </div>
 
             <div style={{ textAlign: 'right' }}>
               <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--gold)', fontFamily: "'Cormorant Garamond', serif" }}>
-                ${c.monto.toLocaleString('es-CL')}
+                ${(c.monto || 0).toLocaleString('es-CL')}
               </div>
               {c.distancia > 0 && (
                 <div style={{ fontSize: 9, color: 'var(--amber)' }}>
@@ -419,16 +434,20 @@ export default function Causas() {
                 🤖 Estampe
               </button>
               <button className="btn btn-blue btn-sm">✏ Editar</button>
-              <button className="btn btn-red btn-sm">🗑</button>
+              <button className="btn btn-red btn-sm" onClick={() => eliminarCausa(c.id)}>🗑</button>
             </div>
           </div>
         </div>
       ))}
 
-      {filtradas.length === 0 && (
+      {!loading && filtradas.length === 0 && (
         <div style={{ textAlign: 'center', padding: 48, color: 'var(--txt-mid)' }}>
           <div style={{ fontSize: 36, marginBottom: 8 }}>⚖</div>
-          <div>No hay causas que coincidan con el filtro</div>
+          <div>
+            {causas.length === 0
+              ? 'No hay causas aún — crea la primera'
+              : 'No hay causas que coincidan con el filtro'}
+          </div>
         </div>
       )}
     </div>
