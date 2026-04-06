@@ -7,6 +7,33 @@ const ESTADOS = [
   'Error PJUD', 'Enviado a Cobro', 'Pendiente de Pago', 'Pagado'
 ];
 
+// Validar formato RUT chileno XX.XXX.XXX-X
+function validarRUT(rut) {
+  if (!rut) return true; // opcional
+  const limpio = rut.replace(/\./g, '').replace(/-/g, '');
+  if (limpio.length < 2) return false;
+  const cuerpo = limpio.slice(0, -1);
+  const dv = limpio.slice(-1).toUpperCase();
+  let suma = 0, multiplo = 2;
+  for (let i = cuerpo.length - 1; i >= 0; i--) {
+    suma += parseInt(cuerpo[i]) * multiplo;
+    multiplo = multiplo < 7 ? multiplo + 1 : 2;
+  }
+  const dvEsperado = 11 - (suma % 11);
+  const dvCalculado = dvEsperado === 11 ? '0' : dvEsperado === 10 ? 'K' : dvEsperado.toString();
+  return dv === dvCalculado;
+}
+
+// Formatear RUT mientras escribe
+function formatearRUT(valor) {
+  const limpio = valor.replace(/\./g, '').replace(/-/g, '').replace(/[^0-9kK]/g, '');
+  if (limpio.length <= 1) return limpio;
+  const cuerpo = limpio.slice(0, -1);
+  const dv = limpio.slice(-1);
+  const cuerpoFormateado = cuerpo.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  return `${cuerpoFormateado}-${dv}`;
+}
+
 function Badge({ estado }) {
   const map = {
     'Pendiente':         { color: 'var(--amber)', bg: 'var(--amber-bg)' },
@@ -28,38 +55,101 @@ function Badge({ estado }) {
 }
 
 function NuevaCausa({ onClose, onGuardar }) {
+  const [corteSeleccionada, setCorteSeleccionada] = useState('');
+  const [tiposGestion, setTiposGestion]           = useState([]);
+  const [competencias, setCompetencias]           = useState([]);
+  const [clientes, setClientes]                   = useState([]);
+  const [carterasDisp, setCarterasDisp]           = useState([]);
+  const [esCBR, setEsCBR]                         = useState(false);
+  const [pjudBuscado, setPjudBuscado]             = useState(false);
+  const [buscandoPJUD, setBuscandoPJUD]           = useState(false);
+  const [guardando, setGuardando]                 = useState(false);
+  const [rutErrors, setRutErrors]                 = useState({});
+
+  const [form, setForm] = useState({
+    rol: '', demandante: '', demandado: '',
+    tipo: '', competencia: '', nInterno: '',
+    cliente: '', clienteId: '', cartera: '',
+    tribunal: '', caratulaCBR: ''
+  });
+
   const [notificados, setNotificados] = useState([
     { nombre: '', rut: '', domicilio: '', comuna: '' }
   ]);
-  const [esCBR, setEsCBR]             = useState(false);
-  const [pjudBuscado, setPjudBuscado] = useState(false);
-  const [buscandoPJUD, setBuscandoPJUD] = useState(false);
-  const [guardando, setGuardando]     = useState(false);
-  const [corteSeleccionada, setCorteSeleccionada] = useState('');
-  const [form, setForm] = useState({
-    rol: '', nInterno: '', tribunal: '', tipo: '',
-    demandante: '', cliente: '', cartera: '', caratulaCBR: ''
-  });
 
   const setF = k => e => setForm(p => ({ ...p, [k]: e.target.value }));
 
-  // Cargar corte y tribunal por defecto desde configuración
+  // Cargar datos iniciales
   useEffect(() => {
-  const cargarDefaults = async () => {
-    const { data } = await supabase
-      .from('configuracion')
-      .select('corte, tribunal')
-      .single();
-    if (data?.corte) {
-      setCorteSeleccionada(data.corte);
-      setForm(p => ({ 
-        ...p, 
-        tribunal: data.tribunal || TRIBUNALES_POR_CORTE[data.corte]?.[0] || ''
-      }));
+    const cargarDatos = async () => {
+      // Config por defecto
+      const { data: cfg } = await supabase
+        .from('configuracion')
+        .select('corte, tribunal')
+        .single();
+      if (cfg?.corte) {
+        setCorteSeleccionada(cfg.corte);
+        setForm(p => ({ ...p, tribunal: cfg.tribunal || TRIBUNALES_POR_CORTE[cfg.corte]?.[0] || '' }));
+      }
+
+      // Tipos de gestión
+      const { data: tipos } = await supabase
+        .from('tipos_gestion')
+        .select('*')
+        .eq('activo', true)
+        .order('nombre');
+      if (tipos) setTiposGestion(tipos);
+
+      // Competencias
+      const { data: comps } = await supabase
+        .from('competencias')
+        .select('*')
+        .eq('activo', true)
+        .order('nombre');
+      if (comps) setCompetencias(comps);
+
+      // Clientes
+      const { data: cls } = await supabase
+        .from('clientes')
+        .select('*')
+        .order('nombre');
+      if (cls) setClientes(cls);
+    };
+    cargarDatos();
+  }, []);
+
+  // Cuando cambia cliente cargar sus carteras
+  const handleClienteChange = async (e) => {
+    const nombre = e.target.value;
+    const cliente = clientes.find(c => c.nombre === nombre);
+    setForm(p => ({ ...p, cliente: nombre, clienteId: cliente?.id || '', cartera: '' }));
+
+    if (cliente?.id) {
+      const { data } = await supabase
+        .from('carteras')
+        .select('*')
+        .eq('cliente_id', cliente.id)
+        .order('nombre');
+      setCarterasDisp(data || []);
+    } else {
+      setCarterasDisp([]);
     }
   };
-  cargarDefaults();
-}, []);
+
+  // Validar RUT al salir del campo
+  const handleRutBlur = (i, valor) => {
+    if (valor && !validarRUT(valor)) {
+      setRutErrors(p => ({ ...p, [i]: 'RUT inválido' }));
+    } else {
+      setRutErrors(p => { const n = { ...p }; delete n[i]; return n; });
+    }
+  };
+
+  // Formatear RUT mientras escribe
+  const handleRutChange = (i, valor) => {
+    const formateado = formatearRUT(valor);
+    setNotificados(p => p.map((x, j) => j === i ? { ...x, rut: formateado } : x));
+  };
 
   const simPJUD = () => {
     if (!form.rol) return;
@@ -68,14 +158,15 @@ function NuevaCausa({ onClose, onGuardar }) {
       setForm(p => ({
         ...p,
         demandante: 'Banco Santander',
-        cliente: 'ASINVERCO',
-        cartera: 'Banco Santander',
+        demandado:  'Constructora ABC Ltda.',
+        cliente:    'ASINVERCO',
+        cartera:    'Banco Santander',
       }));
       setNotificados([{
-        nombre: 'Juan Pérez López',
-        rut: '12.345.678-9',
+        nombre:    'Juan Pérez López',
+        rut:       '12.345.678-9',
         domicilio: 'Av. Providencia 1234, Dpto 5',
-        comuna: 'Providencia'
+        comuna:    'Providencia'
       }]);
       setPjudBuscado(true);
       setBuscandoPJUD(false);
@@ -87,7 +178,14 @@ function NuevaCausa({ onClose, onGuardar }) {
   const removeNotificado = i  => setNotificados(p => p.filter((_, j) => j !== i));
 
   const guardar = async () => {
-    if (!form.rol || !form.tribunal) return;
+    if (!form.rol || !form.tribunal) {
+      alert('ROL y Tribunal son obligatorios');
+      return;
+    }
+    if (Object.keys(rutErrors).length > 0) {
+      alert('Hay RUTs inválidos — corrígelos antes de guardar');
+      return;
+    }
     setGuardando(true);
     try {
       const { error } = await supabase
@@ -97,8 +195,9 @@ function NuevaCausa({ onClose, onGuardar }) {
           n_interno:    form.nInterno || null,
           tribunal:     form.tribunal,
           tipo:         form.tipo,
+          competencia:  form.competencia,
           demandante:   form.demandante,
-          demandado:    notificados[0]?.nombre || '',
+          demandado:    form.demandado,
           rut:          notificados[0]?.rut || '',
           domicilio:    notificados[0]?.domicilio || '',
           comuna:       notificados[0]?.comuna || '',
@@ -119,6 +218,10 @@ function NuevaCausa({ onClose, onGuardar }) {
     setGuardando(false);
   };
 
+  const inputVerde = val => pjudBuscado && val
+    ? { borderColor: 'var(--green)', background: 'var(--green-bg)' }
+    : {};
+
   return (
     <div className="card card-p" style={{ marginBottom: 16 }}>
       <div className="row" style={{ marginBottom: 16, justifyContent: 'space-between' }}>
@@ -132,32 +235,24 @@ function NuevaCausa({ onClose, onGuardar }) {
         borderRadius: 10, padding: 14, marginBottom: 16
       }}>
         <div className="row" style={{ marginBottom: 10 }}>
-          <div style={{
-            width: 26, height: 26, borderRadius: 7,
-            background: 'var(--blue-bg)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13
-          }}>🔗</div>
-          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--blue)' }}>
-            Autocompletar desde PJUD
-          </span>
-          {pjudBuscado && (
-            <span style={{ fontSize: 10, color: 'var(--green)', fontWeight: 700, marginLeft: 8 }}>
-              ✓ Datos obtenidos
-            </span>
-          )}
+          <div style={{ width: 26, height: 26, borderRadius: 7, background: 'var(--blue-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13 }}>🔗</div>
+          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--blue)' }}>Autocompletar desde PJUD</span>
+          {pjudBuscado && <span style={{ fontSize: 10, color: 'var(--green)', fontWeight: 700, marginLeft: 8 }}>✓ Datos obtenidos</span>}
         </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 8 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr auto', gap: 8 }}>
           {/* ROL */}
           <div className="col" style={{ gap: 4 }}>
             <div className="sl" style={{ marginBottom: 4 }}>ROL *</div>
-            <input
-              placeholder="C-1234-2025"
-              value={form.rol}
-              onChange={setF('rol')}
-            />
+            <input placeholder="C-1234-2025" value={form.rol} onChange={setF('rol')} />
           </div>
-
+          {/* Competencia */}
+          <div className="col" style={{ gap: 4 }}>
+            <div className="sl" style={{ marginBottom: 4 }}>Competencia</div>
+            <select value={form.competencia} onChange={setF('competencia')}>
+              <option value="">Seleccionar...</option>
+              {competencias.map(c => <option key={c.id}>{c.nombre}</option>)}
+            </select>
+          </div>
           {/* Corte */}
           <div className="col" style={{ gap: 4 }}>
             <div className="sl" style={{ marginBottom: 4 }}>Corte</div>
@@ -166,33 +261,22 @@ function NuevaCausa({ onClose, onGuardar }) {
               onChange={e => {
                 const c = e.target.value;
                 setCorteSeleccionada(c);
-                const tribunales = TRIBUNALES_POR_CORTE[c] || [];
-                setForm(p => ({ ...p, tribunal: tribunales[0] || '' }));
+                setForm(p => ({ ...p, tribunal: TRIBUNALES_POR_CORTE[c]?.[0] || '' }));
               }}
             >
-              {Object.keys(TRIBUNALES_POR_CORTE).map(c => (
-                <option key={c}>{c}</option>
-              ))}
+              {Object.keys(TRIBUNALES_POR_CORTE).map(c => <option key={c}>{c}</option>)}
             </select>
           </div>
-
           {/* Tribunal */}
           <div className="col" style={{ gap: 4 }}>
             <div className="sl" style={{ marginBottom: 4 }}>Tribunal *</div>
             <select value={form.tribunal} onChange={setF('tribunal')}>
-              {(TRIBUNALES_POR_CORTE[corteSeleccionada] || []).map(t => (
-                <option key={t}>{t}</option>
-              ))}
+              {(TRIBUNALES_POR_CORTE[corteSeleccionada] || []).map(t => <option key={t}>{t}</option>)}
             </select>
           </div>
-
           {/* Botón buscar */}
           <div style={{ display: 'flex', alignItems: 'flex-end' }}>
-            <button
-              className="btn btn-blue"
-              onClick={simPJUD}
-              disabled={buscandoPJUD}
-            >
+            <button className="btn btn-blue" onClick={simPJUD} disabled={buscandoPJUD}>
               {buscandoPJUD ? <span className="spin">⚙</span> : '🔍'} Buscar
             </button>
           </div>
@@ -201,60 +285,76 @@ function NuevaCausa({ onClose, onGuardar }) {
 
       {/* Datos principales */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 14 }}>
-        {[
-          { label: 'N° Interno (si aplica)', key: 'nInterno',   ph: 'Número del cliente' },
-          { label: 'Tipo de gestión *',      key: 'tipo',       ph: 'Notificación Personal' },
-          { label: 'Demandante',             key: 'demandante', ph: 'Nombre demandante' },
-          { label: 'Cliente',                key: 'cliente',    ph: 'ASINVERCO' },
-          { label: 'Cartera',                key: 'cartera',    ph: 'Banco Santander' },
-        ].map(f => (
-          <div key={f.key} className="col" style={{ gap: 4 }}>
-            <div className="sl" style={{ marginBottom: 4 }}>{f.label}</div>
-            <input
-              placeholder={f.ph}
-              value={form[f.key]}
-              onChange={setF(f.key)}
-              style={pjudBuscado && form[f.key]
-                ? { borderColor: 'var(--green)', background: 'var(--green-bg)' }
-                : {}}
-            />
-          </div>
-        ))}
+        {/* Demandante */}
+        <div className="col" style={{ gap: 4 }}>
+          <div className="sl" style={{ marginBottom: 4 }}>Demandante</div>
+          <input placeholder="Nombre o razón social" value={form.demandante} onChange={setF('demandante')} style={inputVerde(form.demandante)} />
+        </div>
+        {/* Demandado */}
+        <div className="col" style={{ gap: 4 }}>
+          <div className="sl" style={{ marginBottom: 4 }}>Demandado</div>
+          <input placeholder="Nombre o razón social" value={form.demandado} onChange={setF('demandado')} style={inputVerde(form.demandado)} />
+        </div>
+        {/* Tipo de gestión */}
+        <div className="col" style={{ gap: 4 }}>
+          <div className="sl" style={{ marginBottom: 4 }}>Tipo de gestión *</div>
+          <select value={form.tipo} onChange={setF('tipo')}>
+            <option value="">Seleccionar...</option>
+            {tiposGestion.map(t => <option key={t.id}>{t.nombre}</option>)}
+          </select>
+        </div>
+        {/* N° Interno */}
+        <div className="col" style={{ gap: 4 }}>
+          <div className="sl" style={{ marginBottom: 4 }}>N° Interno (si aplica)</div>
+          <input placeholder="Número del cliente" value={form.nInterno} onChange={setF('nInterno')} />
+        </div>
+        {/* Cliente */}
+        <div className="col" style={{ gap: 4 }}>
+          <div className="sl" style={{ marginBottom: 4 }}>Cliente</div>
+          <select value={form.cliente} onChange={handleClienteChange}>
+            <option value="">Seleccionar...</option>
+            {clientes.map(c => <option key={c.id}>{c.nombre}</option>)}
+          </select>
+        </div>
+        {/* Cartera */}
+        <div className="col" style={{ gap: 4 }}>
+          <div className="sl" style={{ marginBottom: 4 }}>Cartera</div>
+          <select value={form.cartera} onChange={setF('cartera')} disabled={carterasDisp.length === 0}>
+            <option value="">Seleccionar...</option>
+            {carterasDisp.map(c => <option key={c.id}>{c.nombre}</option>)}
+          </select>
+        </div>
       </div>
 
-      {/* CBR */}
+      {/* CBR compacto */}
       <div style={{
-        background: 'var(--s2)', borderRadius: 9,
-        border: '1px solid var(--bdr)',
-        padding: '10px 14px', marginBottom: 14,
-        display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap'
+        display: 'flex', gap: 12, alignItems: 'center',
+        padding: '8px 12px', marginBottom: 14,
+        background: 'var(--s2)', borderRadius: 8,
+        border: '1px solid var(--bdr)', flexWrap: 'wrap'
       }}>
         <label style={{ display: 'flex', gap: 8, alignItems: 'center', cursor: 'pointer' }}>
           <div
             onClick={() => setEsCBR(!esCBR)}
             style={{
-              width: 18, height: 18, borderRadius: 4,
+              width: 17, height: 17, borderRadius: 4,
               border: `2px solid ${esCBR ? 'var(--gold)' : 'var(--bdr)'}`,
               background: esCBR ? 'var(--gold)' : 'transparent',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               cursor: 'pointer', transition: 'all .15s', flexShrink: 0
             }}
           >
-            {esCBR && <span style={{ color: '#0B0F17', fontSize: 11, fontWeight: 900 }}>✓</span>}
+            {esCBR && <span style={{ color: '#0B0F17', fontSize: 10, fontWeight: 900 }}>✓</span>}
           </div>
-          <span style={{ fontSize: 12, color: 'var(--txt)' }}>
-            Es causa de Conservador de Bienes Raíces (CBR)
-          </span>
+          <span style={{ fontSize: 12, color: 'var(--txt)' }}>CBR</span>
         </label>
         {esCBR && (
-          <div style={{ flex: 1, minWidth: 200 }}>
-            <div className="sl" style={{ marginBottom: 4 }}>N° Carátula CBR</div>
-            <input
-              placeholder="CBR-2025-XXXX"
-              value={form.caratulaCBR}
-              onChange={setF('caratulaCBR')}
-            />
-          </div>
+          <input
+            placeholder="N° Carátula CBR"
+            value={form.caratulaCBR}
+            onChange={setF('caratulaCBR')}
+            style={{ flex: 1, minWidth: 160 }}
+          />
         )}
       </div>
 
@@ -266,9 +366,7 @@ function NuevaCausa({ onClose, onGuardar }) {
             className="btn btn-sm"
             style={{ background: 'var(--gold-bg)', border: '1px solid var(--gold-lo)', color: 'var(--gold)' }}
             onClick={addNotificado}
-          >
-            + Agregar notificado
-          </button>
+          >+ Agregar notificado</button>
         </div>
 
         {notificados.map((n, i) => (
@@ -281,37 +379,58 @@ function NuevaCausa({ onClose, onGuardar }) {
                 Notificado {i + 1}{i === 0 ? ' (principal)' : ''}
               </div>
               <div className="row" style={{ gap: 6 }}>
-                {i > 0 && (
-                  <button className="btn btn-blue btn-sm" onClick={() => copyPrev(i)}>
-                    📋 Copiar domicilio anterior
-                  </button>
-                )}
-                {i > 0 && (
-                  <button className="btn btn-red btn-sm" onClick={() => removeNotificado(i)}>✕</button>
-                )}
+                {i > 0 && <button className="btn btn-blue btn-sm" onClick={() => copyPrev(i)}>📋 Copiar domicilio anterior</button>}
+                {i > 0 && <button className="btn btn-red btn-sm" onClick={() => removeNotificado(i)}>✕</button>}
               </div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10 }}>
-              {[
-                { label: 'Nombre *',   key: 'nombre',   ph: 'Nombre completo' },
-                { label: 'RUT',        key: 'rut',      ph: 'XX.XXX.XXX-X' },
-                { label: 'Domicilio *',key: 'domicilio',ph: 'Calle y número' },
-                { label: 'Comuna *',   key: 'comuna',   ph: 'Comuna' },
-              ].map(f => (
-                <div key={f.key} className="col" style={{ gap: 4 }}>
-                  <div className="sl" style={{ marginBottom: 4 }}>{f.label}</div>
-                  <input
-                    placeholder={f.ph}
-                    value={n[f.key]}
-                    onChange={e => setNotificados(p =>
-                      p.map((x, j) => j === i ? { ...x, [f.key]: e.target.value } : x)
-                    )}
-                    style={pjudBuscado && n[f.key]
-                      ? { borderColor: 'var(--green)', background: 'var(--green-bg)' }
-                      : {}}
-                  />
-                </div>
-              ))}
+              {/* Nombre */}
+              <div className="col" style={{ gap: 4 }}>
+                <div className="sl" style={{ marginBottom: 4 }}>Nombre *</div>
+                <input
+                  placeholder="Nombre completo"
+                  value={n.nombre}
+                  onChange={e => setNotificados(p => p.map((x, j) => j === i ? { ...x, nombre: e.target.value } : x))}
+                  style={pjudBuscado && n.nombre ? { borderColor: 'var(--green)', background: 'var(--green-bg)' } : {}}
+                />
+              </div>
+              {/* RUT con validación */}
+              <div className="col" style={{ gap: 4 }}>
+                <div className="sl" style={{ marginBottom: 4 }}>RUT</div>
+                <input
+                  placeholder="XX.XXX.XXX-X"
+                  value={n.rut}
+                  onChange={e => handleRutChange(i, e.target.value)}
+                  onBlur={e => handleRutBlur(i, e.target.value)}
+                  style={{
+                    ...(pjudBuscado && n.rut ? { borderColor: 'var(--green)', background: 'var(--green-bg)' } : {}),
+                    ...(rutErrors[i] ? { borderColor: 'var(--red)', background: 'var(--red-bg)' } : {})
+                  }}
+                />
+                {rutErrors[i] && (
+                  <span style={{ fontSize: 9, color: 'var(--red)', marginTop: 2 }}>⚠ {rutErrors[i]}</span>
+                )}
+              </div>
+              {/* Domicilio */}
+              <div className="col" style={{ gap: 4 }}>
+                <div className="sl" style={{ marginBottom: 4 }}>Domicilio *</div>
+                <input
+                  placeholder="Calle y número"
+                  value={n.domicilio}
+                  onChange={e => setNotificados(p => p.map((x, j) => j === i ? { ...x, domicilio: e.target.value } : x))}
+                  style={pjudBuscado && n.domicilio ? { borderColor: 'var(--green)', background: 'var(--green-bg)' } : {}}
+                />
+              </div>
+              {/* Comuna */}
+              <div className="col" style={{ gap: 4 }}>
+                <div className="sl" style={{ marginBottom: 4 }}>Comuna *</div>
+                <input
+                  placeholder="Comuna"
+                  value={n.comuna}
+                  onChange={e => setNotificados(p => p.map((x, j) => j === i ? { ...x, comuna: e.target.value } : x))}
+                  style={pjudBuscado && n.comuna ? { borderColor: 'var(--green)', background: 'var(--green-bg)' } : {}}
+                />
+              </div>
             </div>
           </div>
         ))}
@@ -325,9 +444,7 @@ function NuevaCausa({ onClose, onGuardar }) {
           onClick={guardar}
           disabled={guardando}
         >
-          {guardando
-            ? <><span className="spin">⚙</span> Guardando...</>
-            : 'Crear Causa'}
+          {guardando ? <><span className="spin">⚙</span> Guardando...</> : 'Crear Causa'}
         </button>
         <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
       </div>
@@ -336,13 +453,13 @@ function NuevaCausa({ onClose, onGuardar }) {
 }
 
 export default function Causas() {
-  const [causas, setCausas]           = useState([]);
-  const [loading, setLoading]         = useState(true);
+  const [causas, setCausas]             = useState([]);
+  const [loading, setLoading]           = useState(true);
   const [filtroEstado, setFiltroEstado] = useState('Todos');
-  const [filtroCBR, setFiltroCBR]     = useState(false);
-  const [search, setSearch]           = useState('');
-  const [showNueva, setShowNueva]     = useState(false);
-  const [showAlert, setShowAlert]     = useState(true);
+  const [filtroCBR, setFiltroCBR]       = useState(false);
+  const [search, setSearch]             = useState('');
+  const [showNueva, setShowNueva]       = useState(false);
+  const [showAlert, setShowAlert]       = useState(true);
 
   const cargarCausas = async () => {
     setLoading(true);
@@ -390,10 +507,7 @@ export default function Causas() {
               <button className="btn btn-red btn-sm" onClick={() => setShowAlert(false)}>✕ Rechazar</button>
             </div>
           </div>
-          <button
-            onClick={() => setShowAlert(false)}
-            style={{ background: 'none', border: 'none', color: 'var(--txt-mid)', cursor: 'pointer', fontSize: 18 }}
-          >×</button>
+          <button onClick={() => setShowAlert(false)} style={{ background: 'none', border: 'none', color: 'var(--txt-mid)', cursor: 'pointer', fontSize: 18 }}>×</button>
         </div>
       )}
 
@@ -413,13 +527,7 @@ export default function Causas() {
         </button>
       </div>
 
-      {/* Formulario nueva causa */}
-      {showNueva && (
-        <NuevaCausa
-          onClose={() => setShowNueva(false)}
-          onGuardar={cargarCausas}
-        />
-      )}
+      {showNueva && <NuevaCausa onClose={() => setShowNueva(false)} onGuardar={cargarCausas} />}
 
       {/* Filtros */}
       <div className="row" style={{ marginBottom: 12, flexWrap: 'wrap', gap: 6 }}>
@@ -434,9 +542,7 @@ export default function Causas() {
             <button
               key={e}
               className="btn btn-ghost btn-sm"
-              style={filtroEstado === e
-                ? { borderColor: 'var(--gold)', color: 'var(--gold)', background: 'var(--gold-bg)' }
-                : {}}
+              style={filtroEstado === e ? { borderColor: 'var(--gold)', color: 'var(--gold)', background: 'var(--gold-bg)' } : {}}
               onClick={() => setFiltroEstado(e)}
             >{e}</button>
           ))}
@@ -472,9 +578,14 @@ export default function Causas() {
                     N°Int: {c.n_interno}
                   </span>
                 )}
+                {c.competencia && (
+                  <span className="tag" style={{ color: 'var(--blue)', background: 'var(--blue-bg)', border: '1px solid rgba(96,165,250,.3)' }}>
+                    {c.competencia}
+                  </span>
+                )}
                 <Badge estado={c.estado} />
                 {c.pjud && (
-                  <span className="tag" style={{ color: 'var(--blue)', background: 'var(--blue-bg)', border: '1px solid rgba(96,165,250,.3)' }}>
+                  <span className="tag" style={{ color: 'var(--green)', background: 'var(--green-bg)', border: '1px solid rgba(52,211,153,.3)' }}>
                     PJUD ✓
                   </span>
                 )}
@@ -492,7 +603,9 @@ export default function Causas() {
               <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--txt)', marginBottom: 2 }}>
                 {c.demandante} <span style={{ color: 'var(--txt-lo)', fontWeight: 300 }}>vs</span> {c.demandado}
               </div>
-              <div style={{ fontSize: 10, color: 'var(--txt-mid)' }}>{c.tribunal}</div>
+              <div style={{ fontSize: 10, color: 'var(--txt-mid)' }}>
+                {c.tribunal} {c.tipo && `· ${c.tipo}`}
+              </div>
             </div>
 
             <div style={{ textAlign: 'right' }}>
