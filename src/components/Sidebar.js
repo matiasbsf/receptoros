@@ -30,21 +30,22 @@ export default function Sidebar({ screen, setScreen }) {
   return (
     <aside className={`sidebar ${collapsed ? 'closed' : 'open'}`}>
       {/* Toggle */}
-      <button
+    <button
         onClick={() => setCollapsed(!collapsed)}
         style={{
-          background: 'none', border: 'none',
-          borderBottom: '1px solid var(--bdr)',
-          padding: '12px', cursor: 'pointer',
-          color: 'var(--txt-mid)', fontSize: 14,
-          width: '100%', display: 'flex',
-          alignItems: 'center',
-          justifyContent: collapsed ? 'center' : 'flex-end',
-          paddingRight: collapsed ? undefined : 14
-        }}
-      >
-        {collapsed ? '→' : '←'}
-      </button>
+        background: 'none',
+        border: 'none',
+        borderBottom: '1px solid var(--bdr)',
+        padding: '12px', cursor: 'pointer',
+        color: 'var(--txt-mid)', fontSize: 14,
+        width: '100%', display: 'flex',
+        alignItems: 'center',
+        justifyContent: collapsed ? 'center' : 'flex-end',
+        paddingRight: collapsed ? undefined : 14
+    }}
+    >
+    {collapsed ? '→' : '←'}
+    </button>
 
       {/* Nav principal */}
       <div style={{ padding: '8px 0' }}>
@@ -90,17 +91,17 @@ export default function Sidebar({ screen, setScreen }) {
       {/* Usuario */}
       {!collapsed && (
         <div className="sb-user">
-          <div className="av" style={{
-            width: 26, height: 26, fontSize: 10,
-            background: 'linear-gradient(135deg, var(--gold), #E8C860)',
-            color: '#0B0F17'
-          }}>PF</div>
-          <div>
-            <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--txt)' }}>Paulina F.</div>
-            <div style={{ fontSize: 8, color: 'var(--txt-mid)' }}>Receptora · Nº 42</div>
-          </div>
-        </div>
-      )}
+        <div className="av" style={{
+        width: 26, height: 26, fontSize: 10,
+        background: 'linear-gradient(135deg, var(--gold), #E8C860)',
+        color: '#0B0F17'
+        }}>PF</div>
+        <div>
+      <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--txt)' }}>Paulina F.</div>
+      <div style={{ fontSize: 8, color: 'var(--txt-mid)' }}>Receptora · Nº 42</div>
+    </div>
+  </div>
+)}
     </aside>
   );
 }
