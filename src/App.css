@@ -21,7 +21,7 @@ body.light {
   --bg: #F4F6FA; --s0: #FFFFFF; --s1: #F0F2F8; --s2: #E8EBF4;
   --bdr: #C8D0E0; --bdr-hi: #A0AECB;
   --txt: #1A2340; --txt-mid: #4A5878; --txt-lo: #8A9AB8;
-  --sidebar: #1A2340;
+  --sidebar: #E8EBF4;
   background: var(--bg); color: var(--txt);
 }
 
@@ -102,10 +102,8 @@ body.light {
   border-left: 3px solid transparent;
   cursor: pointer;
   display: flex; align-items: center; gap: 8px;
-  color: var(--txt-mid);
-  font-size: 11px;
-  font-family: 'Plus Jakarta Sans', sans-serif;
-  font-weight: 400;
+  color: var(--txt-mid); font-size: 11px;
+  font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 400;
   transition: all .15s; width: 100%;
   text-align: left; white-space: nowrap;
   padding: 7px 14px 7px 28px;
@@ -268,20 +266,6 @@ td { padding: 8px 12px; border-bottom: 1px solid var(--bdr); }
   background: var(--s1);
   border: 1.5px solid var(--bdr);
   border-radius: 14px; padding: 16px 18px;
-}
-
-.sidebar {
-  background: var(--sidebar) !important;
-  transition: background .3s, width .22s;
-}
-
-.sb-btn:hover {
-  color: var(--txt);
-  background: var(--gold-bg);
-}
-
-.sb-user {
-  border-top: 1px solid var(--bdr);
 }
 
 @keyframes spin { to { transform: rotate(360deg); } }
