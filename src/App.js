@@ -3,9 +3,25 @@ import './App.css';
 import { ThemeProvider } from './context/ThemeContext';
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
+import Causas from './pages/Causas';
 
 function AppContent() {
   const [screen, setScreen] = useState('causas');
+
+  const renderScreen = () => {
+    switch(screen) {
+      case 'causas': return <Causas />;
+      default: return (
+        <div style={{ textAlign: 'center', padding: 48, color: 'var(--txt-mid)' }}>
+          <div style={{ fontSize: 36, marginBottom: 8 }}>🚧</div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--txt)', marginBottom: 4 }}>
+            Módulo en construcción
+          </div>
+          <div style={{ fontSize: 13 }}>Próximamente disponible</div>
+        </div>
+      );
+    }
+  };
 
   return (
     <div>
@@ -13,16 +29,7 @@ function AppContent() {
       <div className="app-layout">
         <Sidebar screen={screen} setScreen={setScreen} />
         <main className="main-content">
-          <div style={{
-            fontFamily: "'Cormorant Garamond', serif",
-            fontSize: 28, fontWeight: 700,
-            color: 'var(--txt)', marginBottom: 8
-          }}>
-            {screen.charAt(0).toUpperCase() + screen.slice(1)}
-          </div>
-          <div style={{ color: 'var(--txt-mid)', fontSize: 13 }}>
-            Módulo en construcción...
-          </div>
+          {renderScreen()}
         </main>
       </div>
     </div>
