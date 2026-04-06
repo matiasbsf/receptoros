@@ -98,7 +98,7 @@ export default function Sidebar({ screen, setScreen }) {
         }}>PF</div>
         <div>
       <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--txt)' }}>Paulina F.</div>
-      <div style={{ fontSize: 8, color: 'var(--txt-mid)' }}>Receptora · Nº 42</div>
+      <div style={{ fontSize: 8, color: 'var(--txt-mid)' }}>Receptora</div>
     </div>
   </div>
 )}

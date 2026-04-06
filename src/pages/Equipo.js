@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 const EQUIPO_MOCK = [
   {
     id: 1, ini: 'PF', nombre: 'Paulina Fuentes Hevia',
-    cargo: 'Receptora', registro: 'Nº 42',
+    cargo: 'Receptora',
     email: 'pfhevia@gmail.com', telefono: '+56 9 6312 5974',
     color: '#C9A84C', avatar: null,
     permisos: ['Todo el sistema', 'Firma digital exclusiva', 'Configuración'],
@@ -11,7 +11,7 @@ const EQUIPO_MOCK = [
   },
   {
     id: 2, ini: 'PS', nombre: 'Patricia Soto Fuentes',
-    cargo: 'Secretaria', registro: '',
+    cargo: 'Secretaria',
     email: 'psoto@receptoros.cl', telefono: '+56 9 8765 4321',
     color: '#60A5FA', avatar: null,
     permisos: ['Causas', 'Centro de Firmas (revisar)', 'Cobranza', 'Clientes (solo ver)'],
@@ -20,7 +20,7 @@ const EQUIPO_MOCK = [
   },
   {
     id: 3, ini: 'DA', nombre: 'Diego Araya Muñoz',
-    cargo: 'Ayudante', registro: '',
+    cargo: 'Ayudante',
     email: 'daraya@receptoros.cl', telefono: '+56 9 5555 6666',
     color: '#A78BFA', avatar: null,
     permisos: ['Mi Ruta (app móvil)', 'Registrar diligencias'],
@@ -89,11 +89,6 @@ export default function Equipo() {
                   {u.nombre}
                 </div>
                 <div style={{ fontSize: 11, color: u.color, fontWeight: 600 }}>{u.cargo}</div>
-                {u.registro && (
-                  <div style={{ fontSize: 10, color: 'var(--txt-mid)', fontFamily: "'DM Mono', monospace" }}>
-                    {u.registro}
-                  </div>
-                )}
               </div>
             </div>
 

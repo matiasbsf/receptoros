@@ -32,7 +32,6 @@ export default function Configuracion() {
     email: 'pfhevia@gmail.com',
     telefono: '+56 9 6312 5974',
     sitioWeb: 'www.receptorquintero.cl',
-    registro: 'Nº 42',
     corte: 'C.A. de Valparaíso',
     tribunal: 'Juzgado de Letras y Garantía de Quintero',
     comunaAsiento: 'Quintero',
@@ -41,7 +40,7 @@ export default function Configuracion() {
 
   const [plantilla, setPlantilla] = useState({
     nombre: true, cargo: true, tribunal: true,
-    rol: true, caratulado: true, registro: false,
+    rol: true, caratulado: true,
     email: true, telefono: true,
   });
 
@@ -61,7 +60,6 @@ export default function Configuracion() {
     { k: 'tribunal',   l: 'Tribunal (desde la causa)' },
     { k: 'rol',        l: 'ROL de la causa' },
     { k: 'caratulado', l: 'Caratulado' },
-    { k: 'registro',   l: 'Número de registro' },
   ];
 
   const PIE = [
@@ -107,10 +105,6 @@ export default function Configuracion() {
           <div className="card card-p">
             <div className="sl">Datos judiciales</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <div>
-                <div className="sl" style={{ marginBottom: 4 }}>N° de Registro</div>
-                <input value={cfg.registro} onChange={setC('registro')} placeholder="Nº 42" />
-              </div>
               <div>
                 <div className="sl" style={{ marginBottom: 4 }}>Corte de Apelaciones</div>
                 <select value={cfg.corte} onChange={setC('corte')}>
@@ -325,7 +319,6 @@ export default function Configuracion() {
                 {plantilla.tribunal && <div><b style={{ minWidth: 90, display: 'inline-block' }}>TRIBUNAL</b> : <b>{cfg.tribunal}</b></div>}
                 {plantilla.rol && <div><b style={{ minWidth: 90, display: 'inline-block' }}>ROL</b> : <b>E-407-2026</b></div>}
                 {plantilla.caratulado && <div><b style={{ minWidth: 90, display: 'inline-block' }}>CARATULADO</b> : <b>MOYA / ALVARADO</b></div>}
-                {plantilla.registro && <div><b style={{ minWidth: 90, display: 'inline-block' }}>REGISTRO</b> : <b>{cfg.registro}</b></div>}
               </div>
               <div style={{ textAlign: 'justify', marginBottom: 12, fontSize: 11 }}>
                 CERTIFICO: Haberme constituido en el domicilio señalado en autos, <strong>COSTANERA Nº 1360, LAS VENTANAS, PUCHUNCAVÍ</strong>, a fin de notificar a doña <strong>MARCELA KARINA ALVARADO MOYA</strong>. No fue habida. Doy fe.
