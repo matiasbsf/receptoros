@@ -7,6 +7,7 @@ import Causas from './pages/Causas';
 import Firmas from './pages/Firmas';
 import Rutas from './pages/Rutas';
 import Cobranza from './pages/Cobranza';
+import Clientes from './pages/Clientes';
 
 function AppContent() {
   const [screen, setScreen] = useState('causas');
@@ -17,6 +18,7 @@ function AppContent() {
       case 'firmas':   return <Firmas />;
       case 'rutas':    return <Rutas />;
       case 'cobranza': return <Cobranza />;
+      case 'clientes': return <Clientes />;
       default: return (
         <div style={{ textAlign: 'center', padding: 48, color: 'var(--txt-mid)' }}>
           <div style={{ fontSize: 36, marginBottom: 8 }}>🚧</div>
