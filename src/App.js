@@ -9,18 +9,22 @@ import Rutas from './pages/Rutas';
 import Cobranza from './pages/Cobranza';
 import Clientes from './pages/Clientes';
 import Modelos from './pages/Modelos';
+import Equipo from './pages/Equipo';
+import Configuracion from './pages/Configuracion';
 
 function AppContent() {
   const [screen, setScreen] = useState('causas');
 
   const renderScreen = () => {
     switch(screen) {
-      case 'causas':   return <Causas />;
-      case 'firmas':   return <Firmas />;
-      case 'rutas':    return <Rutas />;
-      case 'cobranza': return <Cobranza />;
-      case 'clientes': return <Clientes />;
-      case 'modelos':  return <Modelos />;
+      case 'causas':        return <Causas />;
+      case 'firmas':        return <Firmas />;
+      case 'rutas':         return <Rutas />;
+      case 'cobranza':      return <Cobranza />;
+      case 'clientes':      return <Clientes />;
+      case 'modelos':       return <Modelos />;
+      case 'equipo':        return <Equipo />;
+      case 'ajustes':       return <Configuracion />;
       default: return (
         <div style={{ textAlign: 'center', padding: 48, color: 'var(--txt-mid)' }}>
           <div style={{ fontSize: 36, marginBottom: 8 }}>🚧</div>
