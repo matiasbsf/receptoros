@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
+import { TRIBUNALES_POR_CORTE } from '../data/tribunales';
 
 const ESTADOS = [
   'Pendiente', 'En Proceso', 'Firmado', 'Subido PJUD',
@@ -8,14 +9,14 @@ const ESTADOS = [
 
 function Badge({ estado }) {
   const map = {
-    'Pendiente':        { color: 'var(--amber)', bg: 'var(--amber-bg)' },
-    'En Proceso':       { color: 'var(--blue)',  bg: 'var(--blue-bg)'  },
-    'Firmado':          { color: 'var(--blue)',  bg: 'var(--blue-bg)'  },
-    'Subido PJUD':      { color: 'var(--green)', bg: 'var(--green-bg)' },
-    'Error PJUD':       { color: 'var(--red)',   bg: 'var(--red-bg)'   },
-    'Enviado a Cobro':  { color: 'var(--violet)',bg: 'var(--violet-bg)'},
-    'Pendiente de Pago':{ color: 'var(--amber)', bg: 'var(--amber-bg)' },
-    'Pagado':           { color: 'var(--green)', bg: 'var(--green-bg)' },
+    'Pendiente':         { color: 'var(--amber)', bg: 'var(--amber-bg)' },
+    'En Proceso':        { color: 'var(--blue)',  bg: 'var(--blue-bg)'  },
+    'Firmado':           { color: 'var(--blue)',  bg: 'var(--blue-bg)'  },
+    'Subido PJUD':       { color: 'var(--green)', bg: 'var(--green-bg)' },
+    'Error PJUD':        { color: 'var(--red)',   bg: 'var(--red-bg)'   },
+    'Enviado a Cobro':   { color: 'var(--violet)',bg: 'var(--violet-bg)'},
+    'Pendiente de Pago': { color: 'var(--amber)', bg: 'var(--amber-bg)' },
+    'Pagado':            { color: 'var(--green)', bg: 'var(--green-bg)' },
   };
   const s = map[estado] || map['Pendiente'];
   return (
@@ -30,16 +31,32 @@ function NuevaCausa({ onClose, onGuardar }) {
   const [notificados, setNotificados] = useState([
     { nombre: '', rut: '', domicilio: '', comuna: '' }
   ]);
-  const [esCBR, setEsCBR] = useState(false);
+  const [esCBR, setEsCBR]             = useState(false);
   const [pjudBuscado, setPjudBuscado] = useState(false);
   const [buscandoPJUD, setBuscandoPJUD] = useState(false);
-  const [guardando, setGuardando] = useState(false);
+  const [guardando, setGuardando]     = useState(false);
+  const [corteSeleccionada, setCorteSeleccionada] = useState('');
   const [form, setForm] = useState({
     rol: '', nInterno: '', tribunal: '', tipo: '',
     demandante: '', cliente: '', cartera: '', caratulaCBR: ''
   });
 
-  const setF = (k) => (e) => setForm(p => ({ ...p, [k]: e.target.value }));
+  const setF = k => e => setForm(p => ({ ...p, [k]: e.target.value }));
+
+  // Cargar corte y tribunal por defecto desde configuración
+  useEffect(() => {
+    const cargarDefaults = async () => {
+      const { data } = await supabase
+        .from('equipo')
+        .select('corte_default, tribunal_default')
+        .single();
+      if (data?.corte_default) {
+        setCorteSeleccionada(data.corte_default);
+        setForm(p => ({ ...p, tribunal: data.tribunal_default || '' }));
+      }
+    };
+    cargarDefaults();
+  }, []);
 
   const simPJUD = () => {
     if (!form.rol) return;
@@ -47,7 +64,6 @@ function NuevaCausa({ onClose, onGuardar }) {
     setTimeout(() => {
       setForm(p => ({
         ...p,
-        tribunal: 'Juzgado de Letras y Garantía de Quintero',
         demandante: 'Banco Santander',
         cliente: 'ASINVERCO',
         cartera: 'Banco Santander',
@@ -63,40 +79,38 @@ function NuevaCausa({ onClose, onGuardar }) {
     }, 1600);
   };
 
-  const addNotificado = () => setNotificados(p => [...p, { nombre: '', rut: '', domicilio: '', comuna: '' }]);
-  const copyPrev = (i) => setNotificados(p => p.map((n, j) => j === i ? { ...n, domicilio: p[i-1].domicilio, comuna: p[i-1].comuna } : n));
-  const removeNotificado = (i) => setNotificados(p => p.filter((_, j) => j !== i));
+  const addNotificado    = () => setNotificados(p => [...p, { nombre: '', rut: '', domicilio: '', comuna: '' }]);
+  const copyPrev         = i  => setNotificados(p => p.map((n, j) => j === i ? { ...n, domicilio: p[i-1].domicilio, comuna: p[i-1].comuna } : n));
+  const removeNotificado = i  => setNotificados(p => p.filter((_, j) => j !== i));
 
   const guardar = async () => {
     if (!form.rol || !form.tribunal) return;
     setGuardando(true);
     try {
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('causas')
         .insert([{
-          rol: form.rol,
-          n_interno: form.nInterno || null,
-          tribunal: form.tribunal,
-          tipo: form.tipo,
-          demandante: form.demandante,
-          demandado: notificados[0]?.nombre || '',
-          rut: notificados[0]?.rut || '',
-          domicilio: notificados[0]?.domicilio || '',
-          comuna: notificados[0]?.comuna || '',
-          estado: 'Pendiente',
-          monto: 0,
-          distancia: 0,
-          pjud: pjudBuscado,
-          cbr: esCBR,
+          rol:          form.rol,
+          n_interno:    form.nInterno || null,
+          tribunal:     form.tribunal,
+          tipo:         form.tipo,
+          demandante:   form.demandante,
+          demandado:    notificados[0]?.nombre || '',
+          rut:          notificados[0]?.rut || '',
+          domicilio:    notificados[0]?.domicilio || '',
+          comuna:       notificados[0]?.comuna || '',
+          estado:       'Pendiente',
+          monto:        0,
+          distancia:    0,
+          pjud:         pjudBuscado,
+          cbr:          esCBR,
           caratula_cbr: esCBR ? form.caratulaCBR : null,
-        }])
-        .select();
-
+        }]);
       if (error) throw error;
       onGuardar && onGuardar();
       onClose();
-    } catch (error) {
-      console.error('Error guardando causa:', error);
+    } catch (e) {
+      console.error(e);
       alert('Error al guardar. Intenta nuevamente.');
     }
     setGuardando(false);
@@ -115,25 +129,67 @@ function NuevaCausa({ onClose, onGuardar }) {
         borderRadius: 10, padding: 14, marginBottom: 16
       }}>
         <div className="row" style={{ marginBottom: 10 }}>
-          <div style={{ width: 26, height: 26, borderRadius: 7, background: 'var(--blue-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13 }}>🔗</div>
-          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--blue)' }}>Autocompletar desde PJUD</span>
-          {pjudBuscado && <span style={{ fontSize: 10, color: 'var(--green)', fontWeight: 700, marginLeft: 8 }}>✓ Datos obtenidos</span>}
+          <div style={{
+            width: 26, height: 26, borderRadius: 7,
+            background: 'var(--blue-bg)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13
+          }}>🔗</div>
+          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--blue)' }}>
+            Autocompletar desde PJUD
+          </span>
+          {pjudBuscado && (
+            <span style={{ fontSize: 10, color: 'var(--green)', fontWeight: 700, marginLeft: 8 }}>
+              ✓ Datos obtenidos
+            </span>
+          )}
         </div>
+
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 8 }}>
+          {/* ROL */}
           <div className="col" style={{ gap: 4 }}>
             <div className="sl" style={{ marginBottom: 4 }}>ROL *</div>
-            <input placeholder="C-1234-2025" value={form.rol} onChange={setF('rol')} />
+            <input
+              placeholder="C-1234-2025"
+              value={form.rol}
+              onChange={setF('rol')}
+            />
           </div>
+
+          {/* Corte */}
           <div className="col" style={{ gap: 4 }}>
             <div className="sl" style={{ marginBottom: 4 }}>Corte</div>
-            <input placeholder="C.A. Valparaíso" />
+            <select
+              value={corteSeleccionada}
+              onChange={e => {
+                const c = e.target.value;
+                setCorteSeleccionada(c);
+                const tribunales = TRIBUNALES_POR_CORTE[c] || [];
+                setForm(p => ({ ...p, tribunal: tribunales[0] || '' }));
+              }}
+            >
+              {Object.keys(TRIBUNALES_POR_CORTE).map(c => (
+                <option key={c}>{c}</option>
+              ))}
+            </select>
           </div>
+
+          {/* Tribunal */}
           <div className="col" style={{ gap: 4 }}>
-            <div className="sl" style={{ marginBottom: 4 }}>Tribunal</div>
-            <input placeholder="Juzgado de..." value={form.tribunal} onChange={setF('tribunal')} />
+            <div className="sl" style={{ marginBottom: 4 }}>Tribunal *</div>
+            <select value={form.tribunal} onChange={setF('tribunal')}>
+              {(TRIBUNALES_POR_CORTE[corteSeleccionada] || []).map(t => (
+                <option key={t}>{t}</option>
+              ))}
+            </select>
           </div>
+
+          {/* Botón buscar */}
           <div style={{ display: 'flex', alignItems: 'flex-end' }}>
-            <button className="btn btn-blue" onClick={simPJUD} disabled={buscandoPJUD}>
+            <button
+              className="btn btn-blue"
+              onClick={simPJUD}
+              disabled={buscandoPJUD}
+            >
               {buscandoPJUD ? <span className="spin">⚙</span> : '🔍'} Buscar
             </button>
           </div>
@@ -143,11 +199,11 @@ function NuevaCausa({ onClose, onGuardar }) {
       {/* Datos principales */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 14 }}>
         {[
-          { label: 'N° Interno (si aplica)', key: 'nInterno', ph: 'Número del cliente' },
-          { label: 'Tipo de gestión *', key: 'tipo', ph: 'Notificación Personal' },
-          { label: 'Demandante', key: 'demandante', ph: 'Nombre demandante' },
-          { label: 'Cliente', key: 'cliente', ph: 'ASINVERCO' },
-          { label: 'Cartera', key: 'cartera', ph: 'Banco Santander' },
+          { label: 'N° Interno (si aplica)', key: 'nInterno',   ph: 'Número del cliente' },
+          { label: 'Tipo de gestión *',      key: 'tipo',       ph: 'Notificación Personal' },
+          { label: 'Demandante',             key: 'demandante', ph: 'Nombre demandante' },
+          { label: 'Cliente',                key: 'cliente',    ph: 'ASINVERCO' },
+          { label: 'Cartera',                key: 'cartera',    ph: 'Banco Santander' },
         ].map(f => (
           <div key={f.key} className="col" style={{ gap: 4 }}>
             <div className="sl" style={{ marginBottom: 4 }}>{f.label}</div>
@@ -155,7 +211,9 @@ function NuevaCausa({ onClose, onGuardar }) {
               placeholder={f.ph}
               value={form[f.key]}
               onChange={setF(f.key)}
-              style={pjudBuscado && form[f.key] ? { borderColor: 'var(--green)', background: 'var(--green-bg)' } : {}}
+              style={pjudBuscado && form[f.key]
+                ? { borderColor: 'var(--green)', background: 'var(--green-bg)' }
+                : {}}
             />
           </div>
         ))}
@@ -181,12 +239,18 @@ function NuevaCausa({ onClose, onGuardar }) {
           >
             {esCBR && <span style={{ color: '#0B0F17', fontSize: 11, fontWeight: 900 }}>✓</span>}
           </div>
-          <span style={{ fontSize: 12, color: 'var(--txt)' }}>Es causa de Conservador de Bienes Raíces (CBR)</span>
+          <span style={{ fontSize: 12, color: 'var(--txt)' }}>
+            Es causa de Conservador de Bienes Raíces (CBR)
+          </span>
         </label>
         {esCBR && (
           <div style={{ flex: 1, minWidth: 200 }}>
             <div className="sl" style={{ marginBottom: 4 }}>N° Carátula CBR</div>
-            <input placeholder="CBR-2025-XXXX" value={form.caratulaCBR} onChange={setF('caratulaCBR')} />
+            <input
+              placeholder="CBR-2025-XXXX"
+              value={form.caratulaCBR}
+              onChange={setF('caratulaCBR')}
+            />
           </div>
         )}
       </div>
@@ -195,10 +259,15 @@ function NuevaCausa({ onClose, onGuardar }) {
       <div style={{ marginBottom: 14 }}>
         <div className="row" style={{ marginBottom: 10, justifyContent: 'space-between' }}>
           <div className="sl" style={{ marginBottom: 0 }}>Notificados</div>
-          <button className="btn btn-sm" style={{ background: 'var(--gold-bg)', border: '1px solid var(--gold-lo)', color: 'var(--gold)' }} onClick={addNotificado}>
+          <button
+            className="btn btn-sm"
+            style={{ background: 'var(--gold-bg)', border: '1px solid var(--gold-lo)', color: 'var(--gold)' }}
+            onClick={addNotificado}
+          >
             + Agregar notificado
           </button>
         </div>
+
         {notificados.map((n, i) => (
           <div key={i} style={{
             background: 'var(--s2)', borderRadius: 10,
@@ -221,18 +290,22 @@ function NuevaCausa({ onClose, onGuardar }) {
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10 }}>
               {[
-                { label: 'Nombre *', key: 'nombre', ph: 'Nombre completo' },
-                { label: 'RUT', key: 'rut', ph: 'XX.XXX.XXX-X' },
-                { label: 'Domicilio *', key: 'domicilio', ph: 'Calle y número' },
-                { label: 'Comuna *', key: 'comuna', ph: 'Comuna' },
+                { label: 'Nombre *',   key: 'nombre',   ph: 'Nombre completo' },
+                { label: 'RUT',        key: 'rut',      ph: 'XX.XXX.XXX-X' },
+                { label: 'Domicilio *',key: 'domicilio',ph: 'Calle y número' },
+                { label: 'Comuna *',   key: 'comuna',   ph: 'Comuna' },
               ].map(f => (
                 <div key={f.key} className="col" style={{ gap: 4 }}>
                   <div className="sl" style={{ marginBottom: 4 }}>{f.label}</div>
                   <input
                     placeholder={f.ph}
                     value={n[f.key]}
-                    onChange={e => setNotificados(p => p.map((x, j) => j === i ? { ...x, [f.key]: e.target.value } : x))}
-                    style={pjudBuscado && n[f.key] ? { borderColor: 'var(--green)', background: 'var(--green-bg)' } : {}}
+                    onChange={e => setNotificados(p =>
+                      p.map((x, j) => j === i ? { ...x, [f.key]: e.target.value } : x)
+                    )}
+                    style={pjudBuscado && n[f.key]
+                      ? { borderColor: 'var(--green)', background: 'var(--green-bg)' }
+                      : {}}
                   />
                 </div>
               ))}
@@ -249,7 +322,9 @@ function NuevaCausa({ onClose, onGuardar }) {
           onClick={guardar}
           disabled={guardando}
         >
-          {guardando ? <><span className="spin">⚙</span> Guardando...</> : 'Crear Causa'}
+          {guardando
+            ? <><span className="spin">⚙</span> Guardando...</>
+            : 'Crear Causa'}
         </button>
         <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
       </div>
@@ -258,13 +333,13 @@ function NuevaCausa({ onClose, onGuardar }) {
 }
 
 export default function Causas() {
-  const [causas, setCausas] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [causas, setCausas]           = useState([]);
+  const [loading, setLoading]         = useState(true);
   const [filtroEstado, setFiltroEstado] = useState('Todos');
-  const [filtroCBR, setFiltroCBR] = useState(false);
-  const [search, setSearch] = useState('');
-  const [showNueva, setShowNueva] = useState(false);
-  const [showAlert, setShowAlert] = useState(true);
+  const [filtroCBR, setFiltroCBR]     = useState(false);
+  const [search, setSearch]           = useState('');
+  const [showNueva, setShowNueva]     = useState(false);
+  const [showAlert, setShowAlert]     = useState(true);
 
   const cargarCausas = async () => {
     setLoading(true);
@@ -276,11 +351,9 @@ export default function Causas() {
     setLoading(false);
   };
 
-  useEffect(() => {
-    cargarCausas();
-  }, []);
+  useEffect(() => { cargarCausas(); }, []);
 
-  const eliminarCausa = async (id) => {
+  const eliminarCausa = async id => {
     if (!window.confirm('¿Eliminar esta causa?')) return;
     await supabase.from('causas').delete().eq('id', id);
     cargarCausas();
@@ -289,9 +362,10 @@ export default function Causas() {
   const filtradas = causas.filter(c => {
     if (filtroEstado !== 'Todos' && c.estado !== filtroEstado) return false;
     if (filtroCBR && !c.cbr) return false;
-    if (search && !c.rol?.toLowerCase().includes(search.toLowerCase()) &&
-        !c.demandado?.toLowerCase().includes(search.toLowerCase()) &&
-        !c.demandante?.toLowerCase().includes(search.toLowerCase())) return false;
+    if (search &&
+      !c.rol?.toLowerCase().includes(search.toLowerCase()) &&
+      !c.demandado?.toLowerCase().includes(search.toLowerCase()) &&
+      !c.demandante?.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
 
@@ -313,14 +387,19 @@ export default function Causas() {
               <button className="btn btn-red btn-sm" onClick={() => setShowAlert(false)}>✕ Rechazar</button>
             </div>
           </div>
-          <button onClick={() => setShowAlert(false)} style={{ background: 'none', border: 'none', color: 'var(--txt-mid)', cursor: 'pointer', fontSize: 18 }}>×</button>
+          <button
+            onClick={() => setShowAlert(false)}
+            style={{ background: 'none', border: 'none', color: 'var(--txt-mid)', cursor: 'pointer', fontSize: 18 }}
+          >×</button>
         </div>
       )}
 
       {/* Header */}
       <div className="row" style={{ marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "'Cormorant Garamond', serif", color: 'var(--txt)' }}>Causas</div>
+          <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "'Cormorant Garamond', serif", color: 'var(--txt)' }}>
+            Causas
+          </div>
           <div style={{ fontSize: 11, color: 'var(--txt-mid)', marginTop: 2 }}>
             {causas.length} causas · {causas.filter(c => c.estado === 'Pendiente').length} pendientes
           </div>
@@ -352,22 +431,19 @@ export default function Causas() {
             <button
               key={e}
               className="btn btn-ghost btn-sm"
-              style={filtroEstado === e ? { borderColor: 'var(--gold)', color: 'var(--gold)', background: 'var(--gold-bg)' } : {}}
+              style={filtroEstado === e
+                ? { borderColor: 'var(--gold)', color: 'var(--gold)', background: 'var(--gold-bg)' }
+                : {}}
               onClick={() => setFiltroEstado(e)}
-            >
-              {e}
-            </button>
+            >{e}</button>
           ))}
           <button
             className="btn btn-sm"
             style={filtroCBR
               ? { background: 'var(--violet-bg)', border: '1px solid rgba(167,139,250,.3)', color: 'var(--violet)' }
-              : { background: 'none', border: '1px solid var(--bdr)', color: 'var(--txt-mid)' }
-            }
+              : { background: 'none', border: '1px solid var(--bdr)', color: 'var(--txt-mid)' }}
             onClick={() => setFiltroCBR(!filtroCBR)}
-          >
-            CBR {filtroCBR ? '✓' : ''}
-          </button>
+          >CBR {filtroCBR ? '✓' : ''}</button>
         </div>
       </div>
 
@@ -379,7 +455,7 @@ export default function Causas() {
         </div>
       )}
 
-      {/* Lista de causas */}
+      {/* Lista causas */}
       {!loading && filtradas.map(c => (
         <div key={c.id} className="card" style={{ padding: '13px 16px', marginBottom: 8 }}>
           <div className="row" style={{ flexWrap: 'wrap', gap: 10 }}>
@@ -413,9 +489,7 @@ export default function Causas() {
               <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--txt)', marginBottom: 2 }}>
                 {c.demandante} <span style={{ color: 'var(--txt-lo)', fontWeight: 300 }}>vs</span> {c.demandado}
               </div>
-              <div style={{ fontSize: 10, color: 'var(--txt-mid)' }}>
-                {c.tribunal}
-              </div>
+              <div style={{ fontSize: 10, color: 'var(--txt-mid)' }}>{c.tribunal}</div>
             </div>
 
             <div style={{ textAlign: 'right' }}>

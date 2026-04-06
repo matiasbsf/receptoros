@@ -11,7 +11,7 @@ const CONFIG_SUB = [
   { k: 'clientes',      icon: '🏢', label: 'Clientes' },
   { k: 'modelos',       icon: '📋', label: 'Modelos' },
   { k: 'equipo',        icon: '👥', label: 'Equipo' },
-  { k: 'configuracion', icon: '🔧', label: 'Datos' },
+  { k: 'ajustes', icon: '🔧', label: 'Datos' },
 ];
 
 export default function Sidebar({ screen, setScreen }) {

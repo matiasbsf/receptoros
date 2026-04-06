@@ -1,41 +1,22 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useTheme } from '../context/ThemeContext';
-
-const CORTES = [
-  'C.A. de Valparaíso', 'C.A. de Santiago', 'C.A. de San Miguel',
-  'C.A. de Concepción', 'C.A. de Temuco', 'C.A. de Antofagasta',
-  'C.A. de Iquique', 'C.A. de La Serena', 'C.A. de Rancagua',
-  'C.A. de Talca', 'C.A. de Chillán', 'C.A. de Puerto Montt',
-  'C.A. de Coihaique', 'C.A. de Punta Arenas', 'C.A. de Arica',
-];
-
-const TRIBUNALES = [
-  'Juzgado de Letras y Garantía de Quintero',
-  'Juzgado de Letras y Garantía de La Ligua',
-  'Juzgado de Letras y Garantía de Petorca',
-  '1° Juzgado Civil de Valparaíso',
-  '2° Juzgado Civil de Valparaíso',
-  'Juzgado de Letras y Garantía de Casablanca',
-  'Juzgado de Letras y Garantía de San Antonio',
-  'Juzgado de Letras de Viña del Mar',
-  '1° Juzgado Civil de Santiago',
-  '2° Juzgado Civil de Santiago',
-  '3° Juzgado Civil de Santiago',
-  'Juzgado Laboral de Santiago',
-];
+import { supabase } from '../supabaseClient';
+import { TRIBUNALES_POR_CORTE } from '../data/tribunales';
 
 export default function Configuracion() {
   const { theme, toggleTheme } = useTheme();
+  const [loading, setLoading] = useState(true);
+  const [guardado, setGuardado] = useState(false);
 
   const [cfg, setCfg] = useState({
-    nombre: 'Paulina Fuentes Hevia',
-    email: 'pfhevia@gmail.com',
-    telefono: '+56 9 6312 5974',
-    sitioWeb: 'www.receptorquintero.cl',
+    nombre: '',
+    email: '',
+    telefono: '',
+    sitioWeb: '',
     corte: 'C.A. de Valparaíso',
-    tribunal: 'Juzgado de Letras y Garantía de Quintero',
-    comunaAsiento: 'Quintero',
-    tasaRetencion: '10,75',
+    tribunal: '',
+    comunaAsiento: '',
+    tasaRetencion: '15,25',
   });
 
   const [plantilla, setPlantilla] = useState({
@@ -44,34 +25,84 @@ export default function Configuracion() {
     email: true, telefono: true,
   });
 
-  const [guardado, setGuardado] = useState(false);
-
   const setC = k => e => setCfg(p => ({ ...p, [k]: e.target.value }));
   const toggleP = k => setPlantilla(p => ({ ...p, [k]: !p[k] }));
 
-  const guardar = () => {
-    setGuardado(true);
-    setTimeout(() => setGuardado(false), 2000);
+  // Cargar configuración desde Supabase
+  useEffect(() => {
+    const cargar = async () => {
+      const { data, error } = await supabase
+        .from('configuracion')
+        .select('*')
+        .single();
+      if (data) {
+        setCfg({
+          nombre: data.nombre || '',
+          email: data.email || '',
+          telefono: data.telefono || '',
+          sitioWeb: data.sitio_web || '',
+          corte: data.corte || 'C.A. de Valparaíso',
+          tribunal: data.tribunal || '',
+          comunaAsiento: data.comuna_asiento || '',
+          tasaRetencion: data.tasa_retencion?.toString().replace('.', ',') || '10,75',
+        });
+      }
+      setLoading(false);
+    };
+    cargar();
+  }, []);
+
+  // Guardar configuración en Supabase
+  const guardar = async () => {
+    try {
+      const { error } = await supabase
+        .from('configuracion')
+        .update({
+          nombre: cfg.nombre,
+          email: cfg.email,
+          telefono: cfg.telefono,
+          sitio_web: cfg.sitioWeb,
+          corte: cfg.corte,
+          tribunal: cfg.tribunal,
+          comuna_asiento: cfg.comunaAsiento,
+          tasa_retencion: parseFloat(cfg.tasaRetencion.replace(',', '.')),
+        })
+        .eq('id', 1);
+
+      if (error) throw error;
+      setGuardado(true);
+      setTimeout(() => setGuardado(false), 2000);
+    } catch (e) {
+      console.error(e);
+      alert('Error al guardar');
+    }
   };
 
   const ENC = [
-    { k: 'nombre',     l: 'Nombre del receptor' },
-    { k: 'cargo',      l: 'Cargo' },
-    { k: 'tribunal',   l: 'Tribunal (desde la causa)' },
-    { k: 'rol',        l: 'ROL de la causa' },
+    { k: 'nombre', l: 'Nombre del receptor' },
+    { k: 'cargo', l: 'Cargo' },
+    { k: 'tribunal', l: 'Tribunal (desde la causa)' },
+    { k: 'rol', l: 'ROL de la causa' },
     { k: 'caratulado', l: 'Caratulado' },
   ];
 
   const PIE = [
-    { k: 'email',    l: 'Email' },
+    { k: 'email', l: 'Email' },
     { k: 'telefono', l: 'Teléfono' },
   ];
+
+  if (loading) return (
+    <div style={{ textAlign: 'center', padding: 48, color: 'var(--txt-mid)' }}>
+      <span className="spin" style={{ fontSize: 32 }}>⚙</span>
+      <div style={{ marginTop: 8 }}>Cargando configuración...</div>
+    </div>
+  );
 
   return (
     <div>
       <div style={{ marginBottom: 14 }}>
         <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "'Cormorant Garamond', serif", color: 'var(--txt)' }}>
-          Configuración
+          Datos & Configuración
         </div>
         <div style={{ fontSize: 11, color: 'var(--txt-mid)', marginTop: 2 }}>
           Datos personales, judiciales y preferencias del sistema
@@ -107,19 +138,38 @@ export default function Configuracion() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <div>
                 <div className="sl" style={{ marginBottom: 4 }}>Corte de Apelaciones</div>
-                <select value={cfg.corte} onChange={setC('corte')}>
-                  {CORTES.map(c => <option key={c}>{c}</option>)}
+                <select
+                  value={cfg.corte}
+                  onChange={e => {
+                    const corte = e.target.value;
+                    const tribunales = TRIBUNALES_POR_CORTE[corte] || [];
+                    setCfg(p => ({
+                      ...p,
+                      corte,
+                      tribunal: tribunales[0] || ''
+                    }));
+                  }}
+                >
+                  {Object.keys(TRIBUNALES_POR_CORTE).map(c => (
+                    <option key={c}>{c}</option>
+                  ))}
                 </select>
               </div>
               <div>
-                <div className="sl" style={{ marginBottom: 4 }}>Tribunal de origen</div>
+                <div className="sl" style={{ marginBottom: 4 }}>Tribunal predeterminado</div>
                 <select value={cfg.tribunal} onChange={setC('tribunal')}>
-                  {TRIBUNALES.map(t => <option key={t}>{t}</option>)}
+                  {(TRIBUNALES_POR_CORTE[cfg.corte] || []).map(t => (
+                    <option key={t}>{t}</option>
+                  ))}
                 </select>
               </div>
               <div>
                 <div className="sl" style={{ marginBottom: 4 }}>Comuna de asiento del tribunal</div>
-                <input value={cfg.comunaAsiento} onChange={setC('comunaAsiento')} placeholder="Quintero" />
+                <input
+                  value={cfg.comunaAsiento}
+                  onChange={setC('comunaAsiento')}
+                  placeholder="Quintero"
+                />
               </div>
             </div>
           </div>
@@ -133,7 +183,7 @@ export default function Configuracion() {
                   Tasa de retención de honorarios
                 </div>
                 <div style={{ fontSize: 9, color: 'var(--txt-mid)', marginTop: 2 }}>
-                  Actualiza cuando el SII lo modifique · Historial disponible
+                  Actualiza cuando el SII lo modifique
                 </div>
               </div>
               <div className="row" style={{ gap: 7, alignItems: 'center' }}>
@@ -150,17 +200,23 @@ export default function Configuracion() {
                 <span style={{ color: 'var(--txt-mid)' }}>%</span>
               </div>
             </div>
-            {/* Historial tasas */}
+            {/* Historial */}
             <div style={{ background: 'var(--s2)', borderRadius: 8, padding: 10, border: '1px solid var(--bdr)' }}>
               <div className="sl" style={{ marginBottom: 7 }}>Historial</div>
               {[
-                { tasa: '10,75%', desde: 'Ene 2024', hasta: 'Hoy', vigente: true },
-                { tasa: '10,75%', desde: 'Ene 2023', hasta: 'Dic 2023', vigente: false },
-                { tasa: '10,75%', desde: 'Ene 2022', hasta: 'Dic 2022', vigente: false },
+                { tasa: '10,75%', desde: '2020', hasta: '2020', vigente: false },
+                { tasa: '11,50%', desde: '2021', hasta: '2021', vigente: false },
+                { tasa: '12,25%', desde: '2022', hasta: '2022', vigente: false },
+                { tasa: '13,00%', desde: '2023', hasta: '2023', vigente: false },
+                { tasa: '13,75%', desde: '2024', hasta: '2024', vigente: false },
+                { tasa: '14,50%', desde: '2025', hasta: '2025', vigente: false },
+                { tasa: '15,25%', desde: '2026', hasta: '2026', vigente: true },
+                { tasa: '16,00%', desde: '2027', hasta: '2027', vigente: false },
+                { tasa: '17,00%', desde: '2028', hasta: '2028', vigente: false },
               ].map((h, i) => (
                 <div key={i} className="row" style={{ justifyContent: 'space-between', padding: '5px 0', borderBottom: '1px solid var(--bdr)', fontSize: 11 }}>
                   <span style={{ color: 'var(--gold)', fontWeight: 700, fontFamily: "'DM Mono', monospace" }}>{h.tasa}</span>
-                  <span style={{ color: 'var(--txt-mid)' }}>{h.desde} → {h.hasta}</span>
+                  <span style={{ color: 'var(--txt-mid)' }}>{h.desde}</span>
                   {h.vigente && (
                     <span className="tag" style={{ color: 'var(--green)', background: 'var(--green-bg)', border: '1px solid rgba(52,211,153,.3)' }}>
                       Vigente
@@ -175,12 +231,12 @@ export default function Configuracion() {
           <div className="card card-p">
             <div className="sl">Apariencia</div>
             <div style={{ fontSize: 11, color: 'var(--txt-mid)', marginBottom: 12 }}>
-              Preferencia personal de tema — cada usuario elige la suya
+              Preferencia personal — cada usuario elige la suya
             </div>
             <div className="g2" style={{ gap: 10 }}>
               {[
-                { k: 'dark',  l: '🌙 Oscuro',  bg: '#0B0F17', txt: '#E2EAF8' },
-                { k: 'light', l: '☀️ Claro',   bg: '#F4F6FA', txt: '#1A2340' },
+                { k: 'dark', l: '🌙 Oscuro', bg: '#0B0F17', txt: '#E2EAF8' },
+                { k: 'light', l: '☀️ Claro', bg: '#F4F6FA', txt: '#1A2340' },
               ].map(t => (
                 <button
                   key={t.k}
@@ -195,14 +251,14 @@ export default function Configuracion() {
                 >
                   <div style={{
                     width: 36, height: 22, borderRadius: 5,
-                    background: t.bg,
-                    border: '1px solid rgba(128,128,128,.3)',
+                    background: t.bg, border: '1px solid rgba(128,128,128,.3)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center'
                   }}>
                     <span style={{ fontSize: 9, color: t.txt, fontWeight: 700 }}>Aa</span>
                   </div>
                   <span style={{
-                    fontSize: 11, fontWeight: theme === t.k ? 700 : 400,
+                    fontSize: 11,
+                    fontWeight: theme === t.k ? 700 : 400,
                     color: theme === t.k ? 'var(--gold)' : t.txt
                   }}>{t.l}</span>
                 </button>
@@ -221,10 +277,7 @@ export default function Configuracion() {
               Encabezado y pie · Firma y precio siempre incluidos
             </div>
 
-            {/* Encabezado */}
-            <div style={{ fontSize: 10, color: 'var(--txt-mid)', marginBottom: 8, fontWeight: 600 }}>
-              ENCABEZADO
-            </div>
+            <div style={{ fontSize: 10, color: 'var(--txt-mid)', marginBottom: 8, fontWeight: 600 }}>ENCABEZADO</div>
             {ENC.map(o => (
               <label key={o.k} style={{
                 display: 'flex', gap: 9, alignItems: 'center',
@@ -248,10 +301,7 @@ export default function Configuracion() {
               </label>
             ))}
 
-            {/* Pie */}
-            <div style={{ fontSize: 10, color: 'var(--txt-mid)', margin: '12px 0 8px', fontWeight: 600 }}>
-              PIE DE PÁGINA
-            </div>
+            <div style={{ fontSize: 10, color: 'var(--txt-mid)', margin: '12px 0 8px', fontWeight: 600 }}>PIE DE PÁGINA</div>
             {PIE.map(o => (
               <label key={o.k} style={{
                 display: 'flex', gap: 9, alignItems: 'center',
@@ -321,7 +371,9 @@ export default function Configuracion() {
                 {plantilla.caratulado && <div><b style={{ minWidth: 90, display: 'inline-block' }}>CARATULADO</b> : <b>MOYA / ALVARADO</b></div>}
               </div>
               <div style={{ textAlign: 'justify', marginBottom: 12, fontSize: 11 }}>
-                CERTIFICO: Haberme constituido en el domicilio señalado en autos, <strong>COSTANERA Nº 1360, LAS VENTANAS, PUCHUNCAVÍ</strong>, a fin de notificar a doña <strong>MARCELA KARINA ALVARADO MOYA</strong>. No fue habida. Doy fe.
+                CERTIFICO: Haberme constituido en el domicilio señalado en autos,{' '}
+                <strong>COSTANERA Nº 1360, LAS VENTANAS, PUCHUNCAVÍ</strong>, a fin de
+                notificar a doña <strong>MARCELA KARINA ALVARADO MOYA</strong>. No fue habida. Doy fe.
               </div>
               <div style={{ fontSize: 10, marginBottom: 8 }}>
                 <strong>Drs. $85.000.-</strong>
