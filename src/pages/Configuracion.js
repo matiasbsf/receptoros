@@ -7,6 +7,10 @@ export default function Configuracion() {
   const { theme, toggleTheme } = useTheme();
   const [loading, setLoading] = useState(true);
   const [guardado, setGuardado] = useState(false);
+  const [tiposGestion, setTiposGestion] = useState([]);
+  const [competencias, setCompetencias] = useState([]);
+  const [nuevoTipo, setNuevoTipo] = useState('');
+  const [nuevaCompetencia, setNuevaCompetencia] = useState('');
 
   const [cfg, setCfg] = useState({
     nombre: '',
@@ -48,6 +52,21 @@ export default function Configuracion() {
         });
       }
       setLoading(false);
+
+      // Cargar tipos de gestión y competencias
+      const { data: tipos } = await supabase
+        .from('tipos_gestion')
+        .select('*')
+        .eq('activo', true)
+        .order('nombre');
+      if (tipos) setTiposGestion(tipos);
+
+      const { data: comps } = await supabase
+        .from('competencias')
+        .select('*')
+        .eq('activo', true)
+        .order('nombre');
+      if (comps) setCompetencias(comps);
     };
     cargar();
   }, []);
@@ -76,6 +95,32 @@ export default function Configuracion() {
       console.error(e);
       alert('Error al guardar');
     }
+  };
+
+  const agregarTipo = async () => {
+    if (!nuevoTipo.trim()) return;
+    await supabase.from('tipos_gestion').insert([{ nombre: nuevoTipo.trim() }]);
+    setNuevoTipo('');
+    const { data } = await supabase.from('tipos_gestion').select('*').eq('activo', true).order('nombre');
+    setTiposGestion(data || []);
+  };
+
+  const eliminarTipo = async (id) => {
+    await supabase.from('tipos_gestion').update({ activo: false }).eq('id', id);
+    setTiposGestion(prev => prev.filter(t => t.id !== id));
+  };
+
+  const agregarCompetencia = async () => {
+    if (!nuevaCompetencia.trim()) return;
+    await supabase.from('competencias').insert([{ nombre: nuevaCompetencia.trim() }]);
+    setNuevaCompetencia('');
+    const { data } = await supabase.from('competencias').select('*').eq('activo', true).order('nombre');
+    setCompetencias(data || []);
+  };
+
+  const eliminarCompetencia = async (id) => {
+    await supabase.from('competencias').update({ activo: false }).eq('id', id);
+    setCompetencias(prev => prev.filter(c => c.id !== id));
   };
 
   const ENC = [
@@ -264,6 +309,70 @@ export default function Configuracion() {
                 </button>
               ))}
             </div>
+          </div>
+        </div>
+
+        {/* Tipos de gestión */}
+        <div className="card card-p">
+          <div className="sl">Tipos de gestión</div>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+            <input
+              placeholder="Nuevo tipo de gestión..."
+              value={nuevoTipo}
+              onChange={e => setNuevoTipo(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && agregarTipo()}
+            />
+            <button className="btn btn-gold btn-sm" onClick={agregarTipo}>+ Agregar</button>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {tiposGestion.map(t => (
+              <div key={t.id} className="row" style={{
+                justifyContent: 'space-between',
+                padding: '7px 10px',
+                background: 'var(--s2)',
+                borderRadius: 8,
+                border: '1px solid var(--bdr)'
+              }}>
+                <span style={{ fontSize: 12, color: 'var(--txt)' }}>{t.nombre}</span>
+                <button
+                  className="btn btn-red btn-sm"
+                  onClick={() => eliminarTipo(t.id)}
+                  style={{ padding: '2px 8px' }}
+                >✕</button>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Competencias */}
+        <div className="card card-p">
+          <div className="sl">Competencias</div>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+            <input
+              placeholder="Nueva competencia..."
+              value={nuevaCompetencia}
+              onChange={e => setNuevaCompetencia(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && agregarCompetencia()}
+            />
+            <button className="btn btn-gold btn-sm" onClick={agregarCompetencia}>+ Agregar</button>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {competencias.map(c => (
+              <div key={c.id} className="row" style={{
+                justifyContent: 'space-between',
+                padding: '7px 10px',
+                background: 'var(--s2)',
+                borderRadius: 8,
+                border: '1px solid var(--bdr)'
+              }}>
+                <span style={{ fontSize: 12, color: 'var(--txt)' }}>{c.nombre}</span>
+                <button
+                  className="btn btn-red btn-sm"
+                  onClick={() => eliminarCompetencia(c.id)}
+                  style={{ padding: '2px 8px' }}
+                >✕</button>
+              </div>
+            ))}
           </div>
         </div>
 
