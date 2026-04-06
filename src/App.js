@@ -4,13 +4,15 @@ import { ThemeProvider } from './context/ThemeContext';
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
 import Causas from './pages/Causas';
+import Firmas from './pages/Firmas';
 
 function AppContent() {
   const [screen, setScreen] = useState('causas');
 
   const renderScreen = () => {
     switch(screen) {
-      case 'causas': return <Causas />;
+      case 'causas':  return <Causas />;
+      case 'firmas':  return <Firmas />;
       default: return (
         <div style={{ textAlign: 'center', padding: 48, color: 'var(--txt-mid)' }}>
           <div style={{ fontSize: 36, marginBottom: 8 }}>🚧</div>
