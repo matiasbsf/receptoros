@@ -45,18 +45,21 @@ function NuevaCausa({ onClose, onGuardar }) {
 
   // Cargar corte y tribunal por defecto desde configuración
   useEffect(() => {
-    const cargarDefaults = async () => {
-      const { data } = await supabase
-        .from('equipo')
-        .select('corte_default, tribunal_default')
-        .single();
-      if (data?.corte_default) {
-        setCorteSeleccionada(data.corte_default);
-        setForm(p => ({ ...p, tribunal: data.tribunal_default || '' }));
-      }
-    };
-    cargarDefaults();
-  }, []);
+  const cargarDefaults = async () => {
+    const { data } = await supabase
+      .from('configuracion')
+      .select('corte, tribunal')
+      .single();
+    if (data?.corte) {
+      setCorteSeleccionada(data.corte);
+      setForm(p => ({ 
+        ...p, 
+        tribunal: data.tribunal || TRIBUNALES_POR_CORTE[data.corte]?.[0] || ''
+      }));
+    }
+  };
+  cargarDefaults();
+}, []);
 
   const simPJUD = () => {
     if (!form.rol) return;
