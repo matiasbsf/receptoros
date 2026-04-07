@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 import { mapearTarifasIA } from '../groqClient';
 
@@ -17,13 +17,14 @@ function calcular(base) {
 function fmt(n) { return (n || 0).toLocaleString('es-CL'); }
 
 function TablaTarifas({ clienteId, carteraId, carteraNombre }) {
-  const [tarifas, setTarifas]       = useState([]);
-  const [loading, setLoading]       = useState(true);
-  const [editando, setEditando]     = useState(null);
-  const [showImport, setShowImport] = useState(false);
-  const [importando, setImportando] = useState(false);
-  const [propuesta, setPropuesta]   = useState(null);
+  const [tarifas, setTarifas]         = useState([]);
+  const [loading, setLoading]         = useState(true);
+  const [editando, setEditando]       = useState(null);
+  const [showImport, setShowImport]   = useState(false);
+  const [importando, setImportando]   = useState(false);
+  const [propuesta, setPropuesta]     = useState(null);
   const [textoImport, setTextoImport] = useState('');
+  const [tiposDisp, setTiposDisp]     = useState([]);
 
   const cargar = async () => {
     setLoading(true);
@@ -34,6 +35,17 @@ function TablaTarifas({ clienteId, carteraId, carteraNombre }) {
       .eq('cartera_id', carteraId)
       .order('tipo_gestion');
     setTarifas(data || []);
+
+    const { data: tipos } = await supabase
+      .from('resultados_gestion')
+      .select('nombre, subtipo')
+      .eq('activo', true)
+      .order('nombre');
+    const lista = [...new Set((tipos || []).map(t =>
+      t.subtipo ? `${t.nombre} — ${t.subtipo}` : t.nombre
+    ))];
+    setTiposDisp(lista);
+
     setLoading(false);
   };
 
@@ -69,7 +81,6 @@ function TablaTarifas({ clienteId, carteraId, carteraNombre }) {
     cargar();
   };
 
-  // ── Importar con IA — texto pegado ────────────────────────────────────────
   const analizarTextoImport = async () => {
     if (!textoImport.trim()) return;
     setImportando(true);
@@ -123,11 +134,24 @@ function TablaTarifas({ clienteId, carteraId, carteraNombre }) {
     return (
       <tr style={{ background: 'var(--gold-bg)' }}>
         <td style={{ padding: '6px 10px' }}>
-          <input value={local.tipo_gestion} onChange={e => setLocal(p => ({ ...p, tipo_gestion: e.target.value }))} style={{ fontSize: 11 }} />
+          <input
+            value={local.tipo_gestion}
+            onChange={e => setLocal(p => ({ ...p, tipo_gestion: e.target.value }))}
+            style={{ fontSize: 11 }}
+            list="tipos-disponibles"
+          />
+          <datalist id="tipos-disponibles">
+            {tiposDisp.map(t => <option key={t} value={t} />)}
+          </datalist>
         </td>
         {['valor_sin_imp','valor_con_imp','valor_dist_sin_imp','valor_dist_con_imp'].map(k => (
           <td key={k} style={{ padding: '6px 8px' }}>
-            <input value={local[k] || ''} onChange={setV(k)} style={{ fontSize: 11, textAlign: 'right', width: 90 }} placeholder="0" />
+            <input
+              value={local[k] || ''}
+              onChange={setV(k)}
+              style={{ fontSize: 11, textAlign: 'right', width: 90 }}
+              placeholder="0"
+            />
           </td>
         ))}
         <td style={{ padding: '6px 8px' }}>
@@ -164,7 +188,7 @@ function TablaTarifas({ clienteId, carteraId, carteraNombre }) {
         <div style={{ background: 'var(--s2)', borderRadius: 10, border: '1px solid rgba(96,165,250,.3)', padding: 16, marginBottom: 14 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--blue)', marginBottom: 6 }}>🤖 Importar tarifas con IA</div>
           <div style={{ fontSize: 11, color: 'var(--txt-mid)', marginBottom: 12 }}>
-            Pega el listado de tarifas del cliente — la IA mapea automáticamente al formato del sistema.
+            Pega el listado de tarifas del cliente — la IA mapea automáticamente.
             También puedes arrastrar un archivo <strong>.txt</strong>.
           </div>
 
@@ -178,8 +202,7 @@ function TablaTarifas({ clienteId, carteraId, carteraNombre }) {
 Ejemplo:
 Notificación Personal: $85.000
 Embargo: $55.000
-Búsqueda Negativa: $22.000
-Retiro de bienes: $120.000`}
+Búsqueda Negativa: $22.000`}
                 style={{
                   width: '100%', minHeight: 160,
                   background: 'var(--s1)', border: '1px solid var(--bdr)',
@@ -248,12 +271,7 @@ Retiro de bienes: $120.000`}
                             onChange={e => setPropuesta(prev => prev.map((x, j) => j === i ? { ...x, tipo_mapeado: e.target.value } : x))}
                             style={{ fontSize: 11 }}
                           >
-                            {['Notificación Personal','Notificación por Cédula','Notificación en Oficina','Búsqueda',
-                              'Requerimiento de Pago (no paga)','Requerimiento de Pago (si paga)',
-                              'Embargo Bienes Muebles','Embargo Bienes Inmuebles','Retiro de Bienes Muebles',
-                              'Embargo Incautación y Retiro','Medida Precautoria','Lanzamiento Precario',
-                              'Lanzamiento otros juicios','Diligencia frustrada'
-                            ].map(t => <option key={t}>{t}</option>)}
+                            {tiposDisp.map(t => <option key={t}>{t}</option>)}
                           </select>
                         </td>
                         <td style={{ padding: '7px 10px', textAlign: 'right', color: 'var(--green)',  fontWeight: 700 }}>${fmt(p.valor_sin_imp)}</td>
@@ -461,6 +479,24 @@ export default function Clientes() {
     setCarteraActiva(data?.[0] || null);
   };
 
+  const eliminarCliente = async () => {
+    if (!window.confirm(`¿Eliminar el cliente "${sel.nombre}"?\nEsta acción eliminará también sus carteras y tarifas.`)) return;
+    await supabase.from('tarifas').delete().eq('cliente_id', sel.id);
+    await supabase.from('carteras').delete().eq('cliente_id', sel.id);
+    await supabase.from('clientes').delete().eq('id', sel.id);
+    setSel(null);
+    cargar();
+  };
+
+  const eliminarCartera = async (ca) => {
+    if (!window.confirm(`¿Eliminar la cartera "${ca.nombre}"?\nTambién se eliminarán sus tarifas.`)) return;
+    await supabase.from('tarifas').delete().eq('cartera_id', ca.id);
+    await supabase.from('carteras').delete().eq('id', ca.id);
+    const { data } = await supabase.from('carteras').select('*').eq('cliente_id', sel.id).order('nombre');
+    setCarteras(data || []);
+    setCarteraActiva(data?.[0] || null);
+  };
+
   const guardarCliente = async () => {
     if (!nuevoCliente.nombre) return;
     await supabase.from('clientes').insert([{
@@ -571,6 +607,7 @@ export default function Clientes() {
           )}
 
           <div style={{ display: 'grid', gridTemplateColumns: sel ? '260px 1fr' : 'repeat(3, 1fr)', gap: 14 }}>
+            {/* Lista clientes */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {loading ? (
                 <div style={{ textAlign: 'center', padding: 32, color: 'var(--txt-mid)' }}>
@@ -591,7 +628,13 @@ export default function Clientes() {
                     onClick={() => sel?.id === cl.id ? setSel(null) : seleccionarCliente(cl)}
                   >
                     <div className="row" style={{ gap: 10, alignItems: 'flex-start' }}>
-                      <div style={{ width: 36, height: 36, borderRadius: 9, background: 'var(--gold-bg)', border: '1px solid var(--gold-ring)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Cormorant Garamond', serif", fontSize: 16, fontWeight: 700, color: 'var(--gold)', flexShrink: 0 }}>
+                      <div style={{
+                        width: 36, height: 36, borderRadius: 9,
+                        background: 'var(--gold-bg)', border: '1px solid var(--gold-ring)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontFamily: "'Cormorant Garamond', serif",
+                        fontSize: 16, fontWeight: 700, color: 'var(--gold)', flexShrink: 0
+                      }}>
                         {cl.nombre.slice(0, 2).toUpperCase()}
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
@@ -600,9 +643,19 @@ export default function Clientes() {
                           <span className="tag" style={{ color: c, background: bg, border: `1px solid ${c}33` }}>{cl.tipo}</span>
                         </div>
                         <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
-                          {cl.cierre_min && <span style={{ fontSize: 9, color: 'var(--txt-lo)' }}>Cierre día <strong style={{ color: 'var(--amber)' }}>{cl.cierre_min}</strong></span>}
-                          <span className="tag" style={{ color: cl.impuesto === 'cliente' ? 'var(--green)' : 'var(--amber)', background: cl.impuesto === 'cliente' ? 'var(--green-bg)' : 'var(--amber-bg)', border: `1px solid ${cl.impuesto === 'cliente' ? 'rgba(52,211,153,.3)' : 'rgba(251,191,36,.3)'}` }}>Imp: {cl.impuesto}</span>
-                          <span className="tag" style={{ color: 'var(--blue)', background: 'var(--blue-bg)', border: '1px solid rgba(96,165,250,.3)' }}>{cl.boleta === 'cartera' ? '1 boleta/cartera' : 'Boleta individual'}</span>
+                          {cl.cierre_min && (
+                            <span style={{ fontSize: 9, color: 'var(--txt-lo)' }}>
+                              Cierre día <strong style={{ color: 'var(--amber)' }}>{cl.cierre_min}</strong>
+                            </span>
+                          )}
+                          <span className="tag" style={{
+                            color:      cl.impuesto === 'cliente' ? 'var(--green)' : 'var(--amber)',
+                            background: cl.impuesto === 'cliente' ? 'var(--green-bg)' : 'var(--amber-bg)',
+                            border: `1px solid ${cl.impuesto === 'cliente' ? 'rgba(52,211,153,.3)' : 'rgba(251,191,36,.3)'}`
+                          }}>Imp: {cl.impuesto}</span>
+                          <span className="tag" style={{ color: 'var(--blue)', background: 'var(--blue-bg)', border: '1px solid rgba(96,165,250,.3)' }}>
+                            {cl.boleta === 'cartera' ? '1 boleta/cartera' : 'Boleta individual'}
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -611,38 +664,66 @@ export default function Clientes() {
               })}
             </div>
 
+            {/* Panel detalle */}
             {sel && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 <div className="card card-p">
                   <div className="row" style={{ justifyContent: 'space-between', marginBottom: 12 }}>
                     <div>
-                      <div style={{ fontSize: 18, fontWeight: 700, fontFamily: "'Cormorant Garamond', serif", color: 'var(--txt)' }}>{sel.nombre}</div>
-                      <span className="tag" style={{ color: tipoColor(sel.tipo).c, background: tipoColor(sel.tipo).bg, border: `1px solid ${tipoColor(sel.tipo).c}33` }}>{sel.tipo}</span>
+                      <div style={{ fontSize: 18, fontWeight: 700, fontFamily: "'Cormorant Garamond', serif", color: 'var(--txt)' }}>
+                        {sel.nombre}
+                      </div>
+                      <span className="tag" style={{ color: tipoColor(sel.tipo).c, background: tipoColor(sel.tipo).bg, border: `1px solid ${tipoColor(sel.tipo).c}33` }}>
+                        {sel.tipo}
+                      </span>
                     </div>
-                    <button className="btn btn-ghost btn-sm" onClick={() => setSel(null)}>✕</button>
+                    <div className="row" style={{ gap: 6 }}>
+                      <button className="btn btn-red btn-sm" onClick={eliminarCliente}>
+                        🗑 Eliminar cliente
+                      </button>
+                      <button className="btn btn-ghost btn-sm" onClick={() => setSel(null)}>✕</button>
+                    </div>
                   </div>
 
                   {sel.tipo === 'Abogado Independiente' && (
                     <div className="alert alert-amber" style={{ marginBottom: 10 }}>
                       <span>💡</span>
-                      <span style={{ fontSize: 11, color: 'var(--amber)' }}>Cliente independiente — se aplica el arancel oficial del receptor por defecto</span>
+                      <span style={{ fontSize: 11, color: 'var(--amber)' }}>
+                        Cliente independiente — se aplica el arancel oficial del receptor por defecto
+                      </span>
                     </div>
                   )}
 
                   <div className="sl">Carteras</div>
                   <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
                     {carteras.map(ca => (
-                      <button
-                        key={ca.id}
-                        className="btn btn-sm"
-                        style={carteraActiva?.id === ca.id
-                          ? { borderColor: 'var(--gold)', color: 'var(--gold)', background: 'var(--gold-bg)' }
-                          : { background: 'none', border: '1px solid var(--bdr)', color: 'var(--txt-mid)' }}
-                        onClick={() => setCarteraActiva(ca)}
-                      >{ca.nombre}</button>
+                      <div key={ca.id} className="row" style={{ gap: 4 }}>
+                        <button
+                          className="btn btn-sm"
+                          style={carteraActiva?.id === ca.id
+                            ? { borderColor: 'var(--gold)', color: 'var(--gold)', background: 'var(--gold-bg)' }
+                            : { background: 'none', border: '1px solid var(--bdr)', color: 'var(--txt-mid)' }}
+                          onClick={() => setCarteraActiva(ca)}
+                        >{ca.nombre}</button>
+                        <button
+                          onClick={() => eliminarCartera(ca)}
+                          style={{
+                            background: 'none', border: 'none',
+                            color: 'var(--red)', cursor: 'pointer',
+                            fontSize: 13, padding: '0 2px', lineHeight: 1
+                          }}
+                          title={`Eliminar cartera ${ca.nombre}`}
+                        >✕</button>
+                      </div>
                     ))}
                     <div className="row" style={{ gap: 5 }}>
-                      <input placeholder="Nueva cartera..." value={nuevaCartera} onChange={e => setNuevaCartera(e.target.value)} onKeyDown={e => e.key === 'Enter' && agregarCartera()} style={{ width: 140, fontSize: 11 }} />
+                      <input
+                        placeholder="Nueva cartera..."
+                        value={nuevaCartera}
+                        onChange={e => setNuevaCartera(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && agregarCartera()}
+                        style={{ width: 140, fontSize: 11 }}
+                      />
                       <button className="btn btn-gold btn-sm" onClick={agregarCartera}>+ Agregar</button>
                     </div>
                   </div>
@@ -650,7 +731,11 @@ export default function Clientes() {
 
                 {carteraActiva && (
                   <div className="card card-p">
-                    <TablaTarifas clienteId={sel.id} carteraId={carteraActiva.id} carteraNombre={carteraActiva.nombre} />
+                    <TablaTarifas
+                      clienteId={sel.id}
+                      carteraId={carteraActiva.id}
+                      carteraNombre={carteraActiva.nombre}
+                    />
                   </div>
                 )}
 
