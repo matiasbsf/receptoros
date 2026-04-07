@@ -9,7 +9,7 @@ const NAV = [
 
 const CONFIG_SUB = [
   { k: 'clientes',      icon: '🏢', label: 'Clientes' },
-  { k: 'modelos',       icon: '📋', label: 'Modelos' },
+  { k: 'modelos',       icon: '📋', label: 'Estampes' },
   { k: 'equipo',        icon: '👥', label: 'Equipo' },
   { k: 'ajustes', icon: '🔧', label: 'Datos' },
 ];
