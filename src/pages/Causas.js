@@ -7,9 +7,10 @@ const ESTADOS = [
   'Error PJUD', 'Enviado a Cobro', 'Pendiente de Pago', 'Pagado'
 ];
 
-// Validar formato RUT chileno XX.XXX.XXX-X
+const CAMPOS_OBLIGATORIOS = ['rol', 'demandante', 'demandado', 'tipo', 'competencia', 'cliente'];
+
 function validarRUT(rut) {
-  if (!rut) return true; // opcional
+  if (!rut) return true;
   const limpio = rut.replace(/\./g, '').replace(/-/g, '');
   if (limpio.length < 2) return false;
   const cuerpo = limpio.slice(0, -1);
@@ -24,7 +25,6 @@ function validarRUT(rut) {
   return dv === dvCalculado;
 }
 
-// Formatear RUT mientras escribe
 function formatearRUT(valor) {
   const limpio = valor.replace(/\./g, '').replace(/-/g, '').replace(/[^0-9kK]/g, '');
   if (limpio.length <= 1) return limpio;
@@ -54,89 +54,104 @@ function Badge({ estado }) {
   );
 }
 
-function NuevaCausa({ onClose, onGuardar }) {
+// ── Formulario compartido (Nueva y Editar) ────────────────────────────────────
+function FormularioCausa({ inicial, notificadosIniciales, onClose, onGuardar, titulo }) {
   const [corteSeleccionada, setCorteSeleccionada] = useState('');
   const [tiposGestion, setTiposGestion]           = useState([]);
   const [competencias, setCompetencias]           = useState([]);
   const [clientes, setClientes]                   = useState([]);
   const [carterasDisp, setCarterasDisp]           = useState([]);
-  const [esCBR, setEsCBR]                         = useState(false);
+  const [esCBR, setEsCBR]                         = useState(inicial?.cbr || false);
   const [pjudBuscado, setPjudBuscado]             = useState(false);
   const [buscandoPJUD, setBuscandoPJUD]           = useState(false);
   const [guardando, setGuardando]                 = useState(false);
+  const [errores, setErrores]                     = useState({});
   const [rutErrors, setRutErrors]                 = useState({});
 
   const [form, setForm] = useState({
-    rol: '', demandante: '', demandado: '',
-    tipo: '', competencia: '', nInterno: '',
-    cliente: '', clienteId: '', cartera: '',
-    tribunal: '', caratulaCBR: ''
+    rol:          inicial?.rol          || '',
+    demandante:   inicial?.demandante   || '',
+    demandado:    inicial?.demandado    || '',
+    tipo:         inicial?.tipo         || '',
+    competencia:  inicial?.competencia  || '',
+    nInterno:     inicial?.n_interno    || '',
+    cliente:      inicial?.cliente      || '',
+    clienteId:    inicial?.cliente_id   || '',
+    cartera:      inicial?.cartera      || '',
+    tribunal:     inicial?.tribunal     || '',
+    caratulaCBR:  inicial?.caratula_cbr || '',
+    estado:       inicial?.estado       || 'Pendiente',
   });
 
-  const [notificados, setNotificados] = useState([
-    { nombre: '', rut: '', domicilio: '', comuna: '' }
-  ]);
+  const [notificados, setNotificados] = useState(
+    notificadosIniciales?.length > 0
+      ? notificadosIniciales
+      : [{ nombre: '', rut: '', domicilio: '', comuna: '' }]
+  );
 
-  const setF = k => e => setForm(p => ({ ...p, [k]: e.target.value }));
+  const setF = k => e => {
+    setForm(p => ({ ...p, [k]: e.target.value }));
+    if (errores[k]) setErrores(p => { const n = { ...p }; delete n[k]; return n; });
+  };
 
-  // Cargar datos iniciales
   useEffect(() => {
     const cargarDatos = async () => {
-      // Config por defecto
       const { data: cfg } = await supabase
         .from('configuracion')
         .select('corte, tribunal')
         .single();
       if (cfg?.corte) {
         setCorteSeleccionada(cfg.corte);
-        setForm(p => ({ ...p, tribunal: cfg.tribunal || TRIBUNALES_POR_CORTE[cfg.corte]?.[0] || '' }));
+        if (!inicial?.tribunal) {
+          setForm(p => ({ ...p, tribunal: cfg.tribunal || TRIBUNALES_POR_CORTE[cfg.corte]?.[0] || '' }));
+        }
       }
 
-      // Tipos de gestión
       const { data: tipos } = await supabase
-        .from('tipos_gestion')
-        .select('*')
-        .eq('activo', true)
-        .order('nombre');
+        .from('tipos_gestion').select('*').eq('activo', true).order('nombre');
       if (tipos) setTiposGestion(tipos);
 
-      // Competencias
       const { data: comps } = await supabase
-        .from('competencias')
-        .select('*')
-        .eq('activo', true)
-        .order('nombre');
+        .from('competencias').select('*').eq('activo', true).order('nombre');
       if (comps) setCompetencias(comps);
 
-      // Clientes
       const { data: cls } = await supabase
-        .from('clientes')
-        .select('*')
-        .order('nombre');
-      if (cls) setClientes(cls);
+        .from('clientes').select('*').order('nombre');
+      if (cls) {
+        setClientes(cls);
+        // Si hay cliente inicial cargar sus carteras
+        if (inicial?.cliente_id) {
+          const { data: cars } = await supabase
+            .from('carteras').select('*').eq('cliente_id', inicial.cliente_id).order('nombre');
+          setCarterasDisp(cars || []);
+        }
+      }
+
+      // Corte inicial si viene de edición
+      if (inicial?.tribunal) {
+        const corteEncontrada = Object.keys(TRIBUNALES_POR_CORTE).find(c =>
+          TRIBUNALES_POR_CORTE[c].includes(inicial.tribunal)
+        );
+        if (corteEncontrada) setCorteSeleccionada(corteEncontrada);
+      }
     };
     cargarDatos();
   }, []);
 
-  // Cuando cambia cliente cargar sus carteras
-  const handleClienteChange = async (e) => {
+  const handleClienteChange = async e => {
     const nombre = e.target.value;
     const cliente = clientes.find(c => c.nombre === nombre);
     setForm(p => ({ ...p, cliente: nombre, clienteId: cliente?.id || '', cartera: '' }));
-
+    if (errores.cliente) setErrores(p => { const n = { ...p }; delete n.cliente; return n; });
     if (cliente?.id) {
       const { data } = await supabase
-        .from('carteras')
-        .select('*')
-        .eq('cliente_id', cliente.id)
-        .order('nombre');
+        .from('carteras').select('*').eq('cliente_id', cliente.id).order('nombre');
       setCarterasDisp(data || []);
     } else {
       setCarterasDisp([]);
     }
   };
 
-  // Validar RUT al salir del campo
   const handleRutBlur = (i, valor) => {
     if (valor && !validarRUT(valor)) {
       setRutErrors(p => ({ ...p, [i]: 'RUT inválido' }));
@@ -145,11 +160,14 @@ function NuevaCausa({ onClose, onGuardar }) {
     }
   };
 
-  // Formatear RUT mientras escribe
   const handleRutChange = (i, valor) => {
     const formateado = formatearRUT(valor);
     setNotificados(p => p.map((x, j) => j === i ? { ...x, rut: formateado } : x));
   };
+
+  const addNotificado    = () => setNotificados(p => [...p, { nombre: '', rut: '', domicilio: '', comuna: '' }]);
+  const copyPrev         = i  => setNotificados(p => p.map((n, j) => j === i ? { ...n, domicilio: p[i-1].domicilio, comuna: p[i-1].comuna } : n));
+  const removeNotificado = i  => setNotificados(p => p.filter((_, j) => j !== i));
 
   const simPJUD = () => {
     if (!form.rol) return;
@@ -163,52 +181,60 @@ function NuevaCausa({ onClose, onGuardar }) {
         cartera:    'Banco Santander',
       }));
       setNotificados([{
-        nombre:    'Juan Pérez López',
-        rut:       '12.345.678-9',
-        domicilio: 'Av. Providencia 1234, Dpto 5',
-        comuna:    'Providencia'
+        nombre: 'Juan Pérez López', rut: '12.345.678-9',
+        domicilio: 'Av. Providencia 1234, Dpto 5', comuna: 'Providencia'
       }]);
       setPjudBuscado(true);
       setBuscandoPJUD(false);
     }, 1600);
   };
 
-  const addNotificado    = () => setNotificados(p => [...p, { nombre: '', rut: '', domicilio: '', comuna: '' }]);
-  const copyPrev         = i  => setNotificados(p => p.map((n, j) => j === i ? { ...n, domicilio: p[i-1].domicilio, comuna: p[i-1].comuna } : n));
-  const removeNotificado = i  => setNotificados(p => p.filter((_, j) => j !== i));
+  // Validar campos obligatorios
+  const validar = () => {
+    const nuevosErrores = {};
+    CAMPOS_OBLIGATORIOS.forEach(k => {
+      if (!form[k]?.trim()) nuevosErrores[k] = 'Campo obligatorio';
+    });
+    if (notificados[0]?.nombre === '') nuevosErrores['notificado_nombre'] = 'Campo obligatorio';
+    if (notificados[0]?.domicilio === '') nuevosErrores['notificado_domicilio'] = 'Campo obligatorio';
+    if (notificados[0]?.comuna === '') nuevosErrores['notificado_comuna'] = 'Campo obligatorio';
+    setErrores(nuevosErrores);
+    return Object.keys(nuevosErrores).length === 0;
+  };
 
   const guardar = async () => {
-    if (!form.rol || !form.tribunal) {
-      alert('ROL y Tribunal son obligatorios');
-      return;
-    }
+    if (!validar()) return;
     if (Object.keys(rutErrors).length > 0) {
       alert('Hay RUTs inválidos — corrígelos antes de guardar');
       return;
     }
     setGuardando(true);
     try {
-      const { error } = await supabase
-        .from('causas')
-        .insert([{
-          rol:          form.rol,
-          n_interno:    form.nInterno || null,
-          tribunal:     form.tribunal,
-          tipo:         form.tipo,
-          competencia:  form.competencia,
-          demandante:   form.demandante,
-          demandado:    form.demandado,
-          rut:          notificados[0]?.rut || '',
-          domicilio:    notificados[0]?.domicilio || '',
-          comuna:       notificados[0]?.comuna || '',
-          estado:       'Pendiente',
-          monto:        0,
-          distancia:    0,
-          pjud:         pjudBuscado,
-          cbr:          esCBR,
-          caratula_cbr: esCBR ? form.caratulaCBR : null,
-        }]);
-      if (error) throw error;
+      const payload = {
+        rol:          form.rol,
+        n_interno:    form.nInterno || null,
+        tribunal:     form.tribunal,
+        tipo:         form.tipo,
+        competencia:  form.competencia,
+        demandante:   form.demandante,
+        demandado:    form.demandado,
+        rut:          notificados[0]?.rut      || '',
+        domicilio:    notificados[0]?.domicilio || '',
+        comuna:       notificados[0]?.comuna    || '',
+        estado:       form.estado,
+        pjud:         pjudBuscado,
+        cbr:          esCBR,
+        caratula_cbr: esCBR ? form.caratulaCBR : null,
+      };
+
+      if (inicial?.id) {
+        const { error } = await supabase.from('causas').update(payload).eq('id', inicial.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('causas').insert([{ ...payload, monto: 0, distancia: 0 }]);
+        if (error) throw error;
+      }
+
       onGuardar && onGuardar();
       onClose();
     } catch (e) {
@@ -218,42 +244,61 @@ function NuevaCausa({ onClose, onGuardar }) {
     setGuardando(false);
   };
 
-  const inputVerde = val => pjudBuscado && val
-    ? { borderColor: 'var(--green)', background: 'var(--green-bg)' }
-    : {};
+  const esError    = k => !!errores[k];
+  const inputStyle = (k, extra = {}) => ({
+    ...(esError(k) ? { borderColor: 'var(--red)', background: 'var(--red-bg)' } : {}),
+    ...(pjudBuscado && form[k] ? { borderColor: 'var(--green)', background: 'var(--green-bg)' } : {}),
+    ...extra
+  });
 
   return (
     <div className="card card-p" style={{ marginBottom: 16 }}>
       <div className="row" style={{ marginBottom: 16, justifyContent: 'space-between' }}>
-        <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--txt)' }}>Nueva Causa</div>
+        <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--txt)' }}>{titulo}</div>
         <button className="btn btn-ghost btn-sm" onClick={onClose}>✕ Cancelar</button>
       </div>
 
+      {/* Resumen errores */}
+      {Object.keys(errores).length > 0 && (
+        <div style={{
+          background: 'var(--red-bg)', border: '1px solid rgba(248,113,113,.3)',
+          borderRadius: 9, padding: '10px 14px', marginBottom: 14,
+          fontSize: 12, color: 'var(--red)', fontWeight: 600
+        }}>
+          ⚠ Completa todos los campos obligatorios antes de guardar
+        </div>
+      )}
+
       {/* PJUD */}
-      <div style={{
-        background: 'var(--s2)', border: '1px solid rgba(96,165,250,.3)',
-        borderRadius: 10, padding: 14, marginBottom: 16
-      }}>
+      <div style={{ background: 'var(--s2)', border: '1px solid rgba(96,165,250,.3)', borderRadius: 10, padding: 14, marginBottom: 16 }}>
         <div className="row" style={{ marginBottom: 10 }}>
           <div style={{ width: 26, height: 26, borderRadius: 7, background: 'var(--blue-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13 }}>🔗</div>
           <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--blue)' }}>Autocompletar desde PJUD</span>
           {pjudBuscado && <span style={{ fontSize: 10, color: 'var(--green)', fontWeight: 700, marginLeft: 8 }}>✓ Datos obtenidos</span>}
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr auto', gap: 8 }}>
-          {/* ROL */}
           <div className="col" style={{ gap: 4 }}>
             <div className="sl" style={{ marginBottom: 4 }}>ROL *</div>
-            <input placeholder="C-1234-2025" value={form.rol} onChange={setF('rol')} />
+            <input
+              placeholder="C-1234-2025"
+              value={form.rol}
+              onChange={setF('rol')}
+              style={esError('rol') ? { borderColor: 'var(--red)', background: 'var(--red-bg)' } : {}}
+            />
+            {esError('rol') && <span style={{ fontSize: 9, color: 'var(--red)' }}>⚠ Obligatorio</span>}
           </div>
-          {/* Competencia */}
           <div className="col" style={{ gap: 4 }}>
-            <div className="sl" style={{ marginBottom: 4 }}>Competencia</div>
-            <select value={form.competencia} onChange={setF('competencia')}>
+            <div className="sl" style={{ marginBottom: 4 }}>Competencia *</div>
+            <select
+              value={form.competencia}
+              onChange={setF('competencia')}
+              style={esError('competencia') ? { borderColor: 'var(--red)', background: 'var(--red-bg)' } : {}}
+            >
               <option value="">Seleccionar...</option>
               {competencias.map(c => <option key={c.id}>{c.nombre}</option>)}
             </select>
+            {esError('competencia') && <span style={{ fontSize: 9, color: 'var(--red)' }}>⚠ Obligatorio</span>}
           </div>
-          {/* Corte */}
           <div className="col" style={{ gap: 4 }}>
             <div className="sl" style={{ marginBottom: 4 }}>Corte</div>
             <select
@@ -267,14 +312,12 @@ function NuevaCausa({ onClose, onGuardar }) {
               {Object.keys(TRIBUNALES_POR_CORTE).map(c => <option key={c}>{c}</option>)}
             </select>
           </div>
-          {/* Tribunal */}
           <div className="col" style={{ gap: 4 }}>
             <div className="sl" style={{ marginBottom: 4 }}>Tribunal *</div>
             <select value={form.tribunal} onChange={setF('tribunal')}>
               {(TRIBUNALES_POR_CORTE[corteSeleccionada] || []).map(t => <option key={t}>{t}</option>)}
             </select>
           </div>
-          {/* Botón buscar */}
           <div style={{ display: 'flex', alignItems: 'flex-end' }}>
             <button className="btn btn-blue" onClick={simPJUD} disabled={buscandoPJUD}>
               {buscandoPJUD ? <span className="spin">⚙</span> : '🔍'} Buscar
@@ -285,38 +328,44 @@ function NuevaCausa({ onClose, onGuardar }) {
 
       {/* Datos principales */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 14 }}>
-        {/* Demandante */}
         <div className="col" style={{ gap: 4 }}>
-          <div className="sl" style={{ marginBottom: 4 }}>Demandante</div>
-          <input placeholder="Nombre o razón social" value={form.demandante} onChange={setF('demandante')} style={inputVerde(form.demandante)} />
+          <div className="sl" style={{ marginBottom: 4 }}>Demandante *</div>
+          <input placeholder="Nombre o razón social" value={form.demandante} onChange={setF('demandante')} style={inputStyle('demandante')} />
+          {esError('demandante') && <span style={{ fontSize: 9, color: 'var(--red)' }}>⚠ Obligatorio</span>}
         </div>
-        {/* Demandado */}
         <div className="col" style={{ gap: 4 }}>
-          <div className="sl" style={{ marginBottom: 4 }}>Demandado</div>
-          <input placeholder="Nombre o razón social" value={form.demandado} onChange={setF('demandado')} style={inputVerde(form.demandado)} />
+          <div className="sl" style={{ marginBottom: 4 }}>Demandado *</div>
+          <input placeholder="Nombre o razón social" value={form.demandado} onChange={setF('demandado')} style={inputStyle('demandado')} />
+          {esError('demandado') && <span style={{ fontSize: 9, color: 'var(--red)' }}>⚠ Obligatorio</span>}
         </div>
-        {/* Tipo de gestión */}
         <div className="col" style={{ gap: 4 }}>
           <div className="sl" style={{ marginBottom: 4 }}>Tipo de gestión *</div>
-          <select value={form.tipo} onChange={setF('tipo')}>
+          <select
+            value={form.tipo}
+            onChange={setF('tipo')}
+            style={esError('tipo') ? { borderColor: 'var(--red)', background: 'var(--red-bg)' } : {}}
+          >
             <option value="">Seleccionar...</option>
             {tiposGestion.map(t => <option key={t.id}>{t.nombre}</option>)}
           </select>
+          {esError('tipo') && <span style={{ fontSize: 9, color: 'var(--red)' }}>⚠ Obligatorio</span>}
         </div>
-        {/* N° Interno */}
         <div className="col" style={{ gap: 4 }}>
-          <div className="sl" style={{ marginBottom: 4 }}>N° Interno (si aplica)</div>
+          <div className="sl" style={{ marginBottom: 4 }}>N° Interno (opcional)</div>
           <input placeholder="Número del cliente" value={form.nInterno} onChange={setF('nInterno')} />
         </div>
-        {/* Cliente */}
         <div className="col" style={{ gap: 4 }}>
-          <div className="sl" style={{ marginBottom: 4 }}>Cliente</div>
-          <select value={form.cliente} onChange={handleClienteChange}>
+          <div className="sl" style={{ marginBottom: 4 }}>Cliente *</div>
+          <select
+            value={form.cliente}
+            onChange={handleClienteChange}
+            style={esError('cliente') ? { borderColor: 'var(--red)', background: 'var(--red-bg)' } : {}}
+          >
             <option value="">Seleccionar...</option>
             {clientes.map(c => <option key={c.id}>{c.nombre}</option>)}
           </select>
+          {esError('cliente') && <span style={{ fontSize: 9, color: 'var(--red)' }}>⚠ Obligatorio</span>}
         </div>
-        {/* Cartera */}
         <div className="col" style={{ gap: 4 }}>
           <div className="sl" style={{ marginBottom: 4 }}>Cartera</div>
           <select value={form.cartera} onChange={setF('cartera')} disabled={carterasDisp.length === 0}>
@@ -325,6 +374,16 @@ function NuevaCausa({ onClose, onGuardar }) {
           </select>
         </div>
       </div>
+
+      {/* Estado (solo edición) */}
+      {inicial?.id && (
+        <div className="col" style={{ gap: 4, marginBottom: 14 }}>
+          <div className="sl" style={{ marginBottom: 4 }}>Estado</div>
+          <select value={form.estado} onChange={setF('estado')} style={{ maxWidth: 260 }}>
+            {ESTADOS.map(e => <option key={e}>{e}</option>)}
+          </select>
+        </div>
+      )}
 
       {/* CBR compacto */}
       <div style={{
@@ -350,7 +409,7 @@ function NuevaCausa({ onClose, onGuardar }) {
         </label>
         {esCBR && (
           <input
-            placeholder="N° Carátula CBR"
+            placeholder="N° Carátula CBR (opcional)"
             value={form.caratulaCBR}
             onChange={setF('caratulaCBR')}
             style={{ flex: 1, minWidth: 160 }}
@@ -361,7 +420,12 @@ function NuevaCausa({ onClose, onGuardar }) {
       {/* Notificados */}
       <div style={{ marginBottom: 14 }}>
         <div className="row" style={{ marginBottom: 10, justifyContent: 'space-between' }}>
-          <div className="sl" style={{ marginBottom: 0 }}>Notificados</div>
+          <div className="sl" style={{ marginBottom: 0 }}>
+            Notificados
+            {(errores['notificado_nombre'] || errores['notificado_domicilio'] || errores['notificado_comuna']) && (
+              <span style={{ color: 'var(--red)', fontSize: 9, marginLeft: 8 }}>⚠ Completa el notificado principal</span>
+            )}
+          </div>
           <button
             className="btn btn-sm"
             style={{ background: 'var(--gold-bg)', border: '1px solid var(--gold-lo)', color: 'var(--gold)' }}
@@ -372,7 +436,8 @@ function NuevaCausa({ onClose, onGuardar }) {
         {notificados.map((n, i) => (
           <div key={i} style={{
             background: 'var(--s2)', borderRadius: 10,
-            padding: 14, border: '1px solid var(--bdr)', marginBottom: 10
+            padding: 14, border: `1px solid ${i === 0 && (errores['notificado_nombre'] || errores['notificado_domicilio'] || errores['notificado_comuna']) ? 'var(--red)' : 'var(--bdr)'}`,
+            marginBottom: 10
           }}>
             <div className="row" style={{ justifyContent: 'space-between', marginBottom: 10 }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--gold)' }}>
@@ -384,17 +449,15 @@ function NuevaCausa({ onClose, onGuardar }) {
               </div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10 }}>
-              {/* Nombre */}
               <div className="col" style={{ gap: 4 }}>
-                <div className="sl" style={{ marginBottom: 4 }}>Nombre *</div>
+                <div className="sl" style={{ marginBottom: 4 }}>Nombre {i === 0 ? '*' : ''}</div>
                 <input
                   placeholder="Nombre completo"
                   value={n.nombre}
                   onChange={e => setNotificados(p => p.map((x, j) => j === i ? { ...x, nombre: e.target.value } : x))}
-                  style={pjudBuscado && n.nombre ? { borderColor: 'var(--green)', background: 'var(--green-bg)' } : {}}
+                  style={i === 0 && errores['notificado_nombre'] ? { borderColor: 'var(--red)', background: 'var(--red-bg)' } : {}}
                 />
               </div>
-              {/* RUT con validación */}
               <div className="col" style={{ gap: 4 }}>
                 <div className="sl" style={{ marginBottom: 4 }}>RUT</div>
                 <input
@@ -402,33 +465,26 @@ function NuevaCausa({ onClose, onGuardar }) {
                   value={n.rut}
                   onChange={e => handleRutChange(i, e.target.value)}
                   onBlur={e => handleRutBlur(i, e.target.value)}
-                  style={{
-                    ...(pjudBuscado && n.rut ? { borderColor: 'var(--green)', background: 'var(--green-bg)' } : {}),
-                    ...(rutErrors[i] ? { borderColor: 'var(--red)', background: 'var(--red-bg)' } : {})
-                  }}
+                  style={rutErrors[i] ? { borderColor: 'var(--red)', background: 'var(--red-bg)' } : {}}
                 />
-                {rutErrors[i] && (
-                  <span style={{ fontSize: 9, color: 'var(--red)', marginTop: 2 }}>⚠ {rutErrors[i]}</span>
-                )}
+                {rutErrors[i] && <span style={{ fontSize: 9, color: 'var(--red)' }}>⚠ RUT inválido</span>}
               </div>
-              {/* Domicilio */}
               <div className="col" style={{ gap: 4 }}>
-                <div className="sl" style={{ marginBottom: 4 }}>Domicilio *</div>
+                <div className="sl" style={{ marginBottom: 4 }}>Domicilio {i === 0 ? '*' : ''}</div>
                 <input
                   placeholder="Calle y número"
                   value={n.domicilio}
                   onChange={e => setNotificados(p => p.map((x, j) => j === i ? { ...x, domicilio: e.target.value } : x))}
-                  style={pjudBuscado && n.domicilio ? { borderColor: 'var(--green)', background: 'var(--green-bg)' } : {}}
+                  style={i === 0 && errores['notificado_domicilio'] ? { borderColor: 'var(--red)', background: 'var(--red-bg)' } : {}}
                 />
               </div>
-              {/* Comuna */}
               <div className="col" style={{ gap: 4 }}>
-                <div className="sl" style={{ marginBottom: 4 }}>Comuna *</div>
+                <div className="sl" style={{ marginBottom: 4 }}>Comuna {i === 0 ? '*' : ''}</div>
                 <input
                   placeholder="Comuna"
                   value={n.comuna}
                   onChange={e => setNotificados(p => p.map((x, j) => j === i ? { ...x, comuna: e.target.value } : x))}
-                  style={pjudBuscado && n.comuna ? { borderColor: 'var(--green)', background: 'var(--green-bg)' } : {}}
+                  style={i === 0 && errores['notificado_comuna'] ? { borderColor: 'var(--red)', background: 'var(--red-bg)' } : {}}
                 />
               </div>
             </div>
@@ -444,7 +500,7 @@ function NuevaCausa({ onClose, onGuardar }) {
           onClick={guardar}
           disabled={guardando}
         >
-          {guardando ? <><span className="spin">⚙</span> Guardando...</> : 'Crear Causa'}
+          {guardando ? <><span className="spin">⚙</span> Guardando...</> : inicial?.id ? 'Guardar cambios' : 'Crear Causa'}
         </button>
         <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
       </div>
@@ -452,6 +508,7 @@ function NuevaCausa({ onClose, onGuardar }) {
   );
 }
 
+// ── Componente principal ──────────────────────────────────────────────────────
 export default function Causas() {
   const [causas, setCausas]             = useState([]);
   const [loading, setLoading]           = useState(true);
@@ -460,6 +517,7 @@ export default function Causas() {
   const [search, setSearch]             = useState('');
   const [showNueva, setShowNueva]       = useState(false);
   const [showAlert, setShowAlert]       = useState(true);
+  const [editando, setEditando]         = useState(null);
 
   const cargarCausas = async () => {
     setLoading(true);
@@ -522,12 +580,38 @@ export default function Causas() {
           </div>
         </div>
         <button className="btn btn-ghost btn-sm">📊 Importar Excel</button>
-        <button className="btn btn-gold" onClick={() => setShowNueva(!showNueva)}>
+        <button
+          className="btn btn-gold"
+          onClick={() => { setShowNueva(!showNueva); setEditando(null); }}
+        >
           {showNueva ? '✕ Cancelar' : '+ Nueva Causa'}
         </button>
       </div>
 
-      {showNueva && <NuevaCausa onClose={() => setShowNueva(false)} onGuardar={cargarCausas} />}
+      {/* Formulario nueva causa */}
+      {showNueva && !editando && (
+        <FormularioCausa
+          titulo="Nueva Causa"
+          onClose={() => setShowNueva(false)}
+          onGuardar={cargarCausas}
+        />
+      )}
+
+      {/* Formulario editar causa */}
+      {editando && (
+        <FormularioCausa
+          titulo={`Editando — ${editando.rol}`}
+          inicial={editando}
+          notificadosIniciales={[{
+            nombre:    editando.demandado  || '',
+            rut:       editando.rut        || '',
+            domicilio: editando.domicilio  || '',
+            comuna:    editando.comuna     || '',
+          }]}
+          onClose={() => setEditando(null)}
+          onGuardar={() => { cargarCausas(); setEditando(null); }}
+        />
+      )}
 
       {/* Filtros */}
       <div className="row" style={{ marginBottom: 12, flexWrap: 'wrap', gap: 6 }}>
@@ -604,7 +688,7 @@ export default function Causas() {
                 {c.demandante} <span style={{ color: 'var(--txt-lo)', fontWeight: 300 }}>vs</span> {c.demandado}
               </div>
               <div style={{ fontSize: 10, color: 'var(--txt-mid)' }}>
-                {c.tribunal} {c.tipo && `· ${c.tipo}`}
+                {c.tribunal}{c.tipo ? ` · ${c.tipo}` : ''}
               </div>
             </div>
 
@@ -620,10 +704,20 @@ export default function Causas() {
             </div>
 
             <div className="row" style={{ gap: 5, flexWrap: 'wrap' }}>
-              <button className="btn btn-sm" style={{ background: 'var(--gold-bg)', border: '1px solid var(--gold-lo)', color: 'var(--gold)' }}>
+              <button
+                className="btn btn-sm"
+                style={{ background: 'var(--gold-bg)', border: '1px solid var(--gold-lo)', color: 'var(--gold)' }}
+              >
                 🤖 Estampe
               </button>
-              <button className="btn btn-blue btn-sm">✏ Editar</button>
+              <button
+                className="btn btn-blue btn-sm"
+                onClick={() => {
+                  setEditando(c);
+                  setShowNueva(false);
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+              >✏ Editar</button>
               <button className="btn btn-red btn-sm" onClick={() => eliminarCausa(c.id)}>🗑</button>
             </div>
           </div>
